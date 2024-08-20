@@ -1,0 +1,101 @@
+name: Update README
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.PAT }}" \
+          https://api.github.com/repos/${{ github.repository }}/tags \
+          | jq -r '.[0].name')
+          echo "Latest tag: $latest_tag"
+          echo "::set-output name=tag::$latest_tag"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Update README
+        id: update_readme
+        run: |
+          cat <<EOF > README.md
+          Downloads
+          ---------
+          Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ github.repository }}/releases).
+          
+          ## Usage in private repos (faster)
+          
+           * Maven (inside the `pom.xml` file)
+          \`\`\`xml
+            <repository>
+                <id>github</id>
+                <url>https://maven.pkg.github.com/Blizzity/${{ github.repository }}</url>
+                <snapshots><enabled>true</enabled></snapshots>
+            </repository>
+            <dependency>
+                <groupId>io.github.intisy</groupId>
+                <artifactId>${{ github.repository }}</artifactId>
+                <version>${{ steps.get_latest_tag.outputs.tag }}</version>
+            </dependency>
+          \`\`\`
+          
+           * Maven (inside the `settings.xml` file)
+          \`\`\`xml
+            <servers>
+                <server>
+                    <id>github</id>
+                    <username><your-username></username>
+                    <password><your-access-token></password>
+                </server>
+            </servers>
+          \`\`\`
+          
+           * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
+          \`\`\`groovy
+            repositories {
+                maven {
+                    url "https://maven.pkg.github.com/Blizzity/${{ github.repository }}"
+                    credentials {
+                        username = "<your-username>"
+                        password = "<your-access-token>"
+                    }
+                }
+            }
+            dependencies {
+                implementation 'io.github.intisy:${{ github.repository }}:${{ steps.get_latest_tag.outputs.tag }}'
+            }
+          \`\`\`
+          
+          ## Usage in public repos (slower and only works in gradle but safer)
+          
+           * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
+          \`\`\`groovy
+            plugins {
+                id "io.github.intisy.github-gradle" version "1.1"
+            }
+            dependencies {
+                githubImplementation "intisy:${{ github.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
+            }
+          \`\`\`
+          EOF
+          
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: 'Auto-update README'
+          add: 'README.md'
+          new_branch: main

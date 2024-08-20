@@ -1,0 +1,33 @@
+name: Package
+
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project sources
+        uses: actions/checkout@v4
+        
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v3
+        
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.PAT }}" \
+          https://api.github.com/repos/${{ github.repository }}/tags \
+          | jq -r '.[0].name')
+          echo "Latest tag: $latest_tag"
+          echo "::set-output name=tag::$latest_tag"
+
+      - name: Publish to GitHub Packages Apache Maven
+        run: ./gradlew publish -Pversion=${{ steps.get_latest_tag.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
