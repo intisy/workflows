@@ -1,9 +1,14 @@
-name: Update README
-
+name: Update Dependency README
 on:
-  release:
-    types: [published]
-
+  workflow_call:
+    inputs:
+      repository:
+        description: 'repository'
+        required: true
+        type: string
+    secrets:
+      PAT:
+        required: true
 jobs:
   update-readme:
     runs-on: ubuntu-latest
@@ -19,7 +24,7 @@ jobs:
         id: get_latest_tag
         run: |
           latest_tag=$(curl -s -H "Authorization: token ${{ secrets.PAT }}" \
-          https://api.github.com/repos/${{ github.repository }}/tags \
+          https://api.github.com/repos/${{ inputs.repository }}/tags \
           | jq -r '.[0].name')
           echo "Latest tag: $latest_tag"
           echo "::set-output name=tag::$latest_tag"
@@ -35,7 +40,7 @@ jobs:
           cat <<EOF > README.md
           Downloads
           ---------
-          Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ github.repository }}/releases).
+          Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ inputs.repository }}/releases).
           
           ## Usage in private repos (faster)
           
@@ -43,7 +48,7 @@ jobs:
           \`\`\`xml
             <repository>
                 <id>github</id>
-                <url>https://maven.pkg.github.com/Blizzity/${{ github.repository }}</url>
+                <url>https://maven.pkg.github.com/Blizzity/${{ inputs.repository }}</url>
                 <snapshots><enabled>true</enabled></snapshots>
             </repository>
             <dependency>
@@ -68,7 +73,7 @@ jobs:
           \`\`\`groovy
             repositories {
                 maven {
-                    url "https://maven.pkg.github.com/Blizzity/${{ github.repository }}"
+                    url "https://maven.pkg.github.com/Blizzity/${{ inputs.repository }}"
                     credentials {
                         username = "<your-username>"
                         password = "<your-access-token>"
@@ -76,7 +81,7 @@ jobs:
                 }
             }
             dependencies {
-                implementation 'io.github.intisy:${{ github.repository }}:${{ steps.get_latest_tag.outputs.tag }}'
+                implementation 'io.github.intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}'
             }
           \`\`\`
           
@@ -88,7 +93,7 @@ jobs:
                 id "io.github.intisy.github-gradle" version "1.1"
             }
             dependencies {
-                githubImplementation "intisy:${{ github.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
+                githubImplementation "intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
             }
           \`\`\`
           EOF

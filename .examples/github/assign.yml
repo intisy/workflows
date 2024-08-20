@@ -1,0 +1,13 @@
+name: Auto Assign
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+jobs:
+  call-reusable-workflow:
+    uses: intisy/workflows/github/assign.yml@main
+    with:
+      assignees: "intisy"
+    secrets:
+      PAT: ${{ secrets.PAT }}

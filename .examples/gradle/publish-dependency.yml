@@ -1,0 +1,12 @@
+name: Package Dependency
+on:
+  push:
+    tags:
+      - "*"
+jobs:
+  call-reusable-workflow:
+    uses: intisy/workflows/github/publish-dependency.yml@main
+    with:
+      repository: "intisy"
+    secrets:
+      PAT: ${{ secrets.PAT }}

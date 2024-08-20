@@ -1,0 +1,11 @@
+name: Update Dependency README
+on:
+  release:
+    types: [published]
+jobs:
+  call-reusable-workflow:
+    uses: intisy/workflows/github/readme-dependency.yml@main
+    with:
+      repository: "intisy"
+    secrets:
+      PAT: ${{ secrets.PAT }}

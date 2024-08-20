@@ -1,11 +1,16 @@
 name: Auto Assign
 on:
-  issues:
-    types: [opened]
-  pull_request:
-    types: [opened]
+  workflow_call:
+    inputs:
+      assignees:
+        description: 'assignees'
+        required: true
+        type: string
+    secrets:
+      PAT:
+        required: true
 jobs:
-  run:
+  auto-assign:
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -15,5 +20,5 @@ jobs:
       uses: pozil/auto-assign-issue@v1
       with:
           repo-token: ${{ secrets.PAT }}
-          assignees: intisy
+          assignees: ${{ inputs.assignees }}
           numOfAssignee: 1

@@ -1,19 +1,23 @@
-name: Publish Release
-
+name: Build And Upload
 on:
-  push:
-    tags:
-      - "*"
-
+  workflow_call:
+    inputs:
+      ref_name:
+        description: 'ref_name'
+        required: true
+        type: string
+    secrets:
+      PAT:
+        required: true
 jobs:
-  build-and-publish:
+  build-and-upload:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
       - name: Setup Git
-        run: echo "${{ secrets.PAT }}" | gh auth login --with-token
+        run: echo "${{ inputs.PAT }}" | gh auth login --with-token
         
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
@@ -29,5 +33,5 @@ jobs:
 
       - name: Create Release and Upload Jar
         run: |
-            gh release create ${{ github.ref_name }} -t "Release ${{ github.ref_name }}"
-            gh release upload "${{ github.ref_name }}" build/libs/* --clobber
+            gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}"
+            gh release upload "${{ inputs.ref_name }}" build/libs/* --clobber
