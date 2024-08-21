@@ -6,7 +6,7 @@ on:
     types: [opened]
 jobs:
   call-reusable-workflow:
-    uses: intisy/workflows/.github/workflows/github/assign.yml@main
+    uses: intisy/workflows/.github/workflows/assign.yml@main
     with:
       assignees: "intisy"
     secrets:

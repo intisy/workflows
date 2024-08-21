@@ -5,7 +5,7 @@ on:
       - "*"
 jobs:
   call-reusable-workflow:
-    uses: intisy/workflows/.github/workflows/github/publish-plugin.yml@main
+    uses: intisy/workflows/.github/workflows/publish-plugin.yml@main
     with:
       repository: "intisy"
     secrets:
