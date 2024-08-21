@@ -7,7 +7,7 @@ on:
         required: true
         type: string
     secrets:
-      PAT:
+      envPAT:
         required: true
 jobs:
   auto-assign:
@@ -19,6 +19,6 @@ jobs:
     - name: 'Auto-assign issue'
       uses: pozil/auto-assign-issue@v1
       with:
-          repo-token: ${{ secrets.PAT }}
+          repo-token: ${{ secrets.envPAT }}
           assignees: ${{ inputs.assignees }}
           numOfAssignee: 1

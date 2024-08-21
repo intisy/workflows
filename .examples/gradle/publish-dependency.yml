@@ -9,4 +9,4 @@ jobs:
     with:
       repository: "intisy"
     secrets:
-      token: ${{ secrets.PAT }}
+      envPAT: ${{ secrets.PAT }}

@@ -7,7 +7,7 @@ on:
         required: true
         type: string
     secrets:
-      PAT:
+      envPAT:
         required: true
 jobs:
   update-readme:
@@ -23,7 +23,7 @@ jobs:
       - name: Get latest tag
         id: get_latest_tag
         run: |
-          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.PAT }}" \
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" \
           https://api.github.com/repos/${{ inputs.repository }}/tags \
           | jq -r '.[0].name')
           echo "Latest tag: $latest_tag"

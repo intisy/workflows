@@ -9,6 +9,6 @@ jobs:
     with:
       repository: "intisy"
     secrets:
-      SECRET: ${{ secrets.SECRET }}
-      KEY: ${{ secrets.KEY }}
-      PAT: ${{ secrets.PAT }}
+      envSECRET: ${{ secrets.SECRET }}
+      envKEY: ${{ secrets.KEY }}
+      envPAT: ${{ secrets.PAT }}

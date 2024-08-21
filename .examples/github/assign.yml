@@ -10,4 +10,4 @@ jobs:
     with:
       assignees: "intisy"
     secrets:
-      PAT: ${{ secrets.PAT }}
+      envPAT: ${{ secrets.PAT }}
