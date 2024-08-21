@@ -4,7 +4,7 @@ on:
     types: [published]
 jobs:
   call-reusable-workflow:
-    uses: intisy/workflows/github/readme-dependency.yml@main
+    uses: intisy/workflows/.github/workflows/github/readme-dependency.yml@main
     with:
       repository: "intisy"
     secrets:
