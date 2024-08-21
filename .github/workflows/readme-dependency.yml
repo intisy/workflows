@@ -38,8 +38,8 @@ jobs:
         id: update_readme
         run: |
           cat <<EOF > README.md
-          Downloads
-          ---------
+          # Github Gradle
+          
           Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ inputs.repository }}/releases).
           
           ## Usage in private repos (faster)
