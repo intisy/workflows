@@ -7,7 +7,7 @@ jobs:
   call-reusable-workflow:
     uses: intisy/workflows/.github/workflows/publish-plugin.yml@main
     with:
-      repository: "intisy"
+      ref_name: ${{ github.ref_name }}
     secrets:
       envSECRET: ${{ secrets.SECRET }}
       envKEY: ${{ secrets.KEY }}

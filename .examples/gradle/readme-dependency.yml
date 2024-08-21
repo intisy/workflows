@@ -6,6 +6,6 @@ jobs:
   call-reusable-workflow:
     uses: intisy/workflows/.github/workflows/readme-dependency.yml@main
     with:
-      repository: "intisy"
+      ref_name: ${{ github.ref_name }}
     secrets:
       envPAT: ${{ secrets.PAT }}
