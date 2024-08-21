@@ -7,6 +7,6 @@ jobs:
   call-reusable-workflow:
     uses: intisy/workflows/.github/workflows/publish-dependency.yml@main
     with:
-      ref_name: ${{ github.ref_name }}
+      repository: ${{ github.repository }}
     secrets:
       envPAT: ${{ secrets.PAT }}

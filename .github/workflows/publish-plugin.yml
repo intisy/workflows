@@ -2,8 +2,8 @@ name: Package
 on:
   workflow_call:
     inputs:
-      ref_name:
-        description: 'ref_name'
+      repository:
+        description: 'repository'
         required: true
         type: string
     secrets:
@@ -30,7 +30,7 @@ jobs:
         id: get_latest_tag
         run: |
           latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" \
-          https://api.github.com/repos/${{ inputs.ref_name }}/tags \
+          https://api.github.com/repos/${{ inputs.repository }}/tags \
           | jq -r '.[0].name')
           echo "Latest tag: $latest_tag"
           echo "::set-output name=tag::$latest_tag"
