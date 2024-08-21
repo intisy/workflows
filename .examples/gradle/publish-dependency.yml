@@ -1,4 +1,4 @@
-name: Package Dependency
+name: Publish Dependency
 on:
   push:
     tags:
@@ -9,4 +9,4 @@ jobs:
     with:
       repository: "intisy"
     secrets:
-      PAT: ${{ secrets.PAT }}
+      token: ${{ secrets.PAT }}

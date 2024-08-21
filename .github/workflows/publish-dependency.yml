@@ -1,4 +1,4 @@
-name: Package Dependency
+name: Publish Dependency
 on:
   workflow_call:
     inputs:
@@ -7,7 +7,7 @@ on:
         required: true
         type: string
     secrets:
-      PAT:
+      token:
         required: true
 jobs:
   package-dependency:
@@ -25,13 +25,11 @@ jobs:
       - name: Get latest tag
         id: get_latest_tag
         run: |
-          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.PAT }}" \
-          https://api.github.com/repos/${{ inputs.repository }}/tags \
-          | jq -r '.[0].name')
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.token }}" https://api.github.com/repos/${{ inputs.repository }}/tags | jq -r '.[0].name')
           echo "Latest tag: $latest_tag"
           echo "::set-output name=tag::$latest_tag"
 
       - name: Publish to GitHub Packages Apache Maven
         run: ./gradlew publish -Pversion=${{ steps.get_latest_tag.outputs.tag }}
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+          GITHUB_TOKEN: ${{ secrets.token }}
