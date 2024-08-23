@@ -29,9 +29,7 @@ jobs:
       - name: Get latest tag
         id: get_latest_tag
         run: |
-          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" \
-          https://api.github.com/repos/${{ inputs.repository }}/tags \
-          | jq -r '.[0].name')
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" https://api.github.com/repos/${{ inputs.repository }}/tags | jq -r '.[].name' | sort -V | tail -n1)
           echo "Latest tag: $latest_tag"
           echo "::set-output name=tag::$latest_tag"
 
