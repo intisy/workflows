@@ -36,7 +36,7 @@ jobs:
         id: update_readme
         run: |
           cat <<EOF > README.md
-          # Github Gradle
+          # $(grep "^$display_name=" "gradle.properties" | cut -d'=' -f2-)
           
           Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ inputs.repository }}/releases).
           
