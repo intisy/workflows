@@ -6,6 +6,10 @@ on:
         description: 'repository'
         required: true
         type: string
+      actor:
+        description: 'actor'
+        required: true
+        type: string
     secrets:
       envPAT:
         required: true
@@ -40,7 +44,7 @@ jobs:
           cat <<EOF > README.md
           # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
           
-          Archives containing JAR files are available as [releases](https://github.com/Blizzity/${{ inputs.repository }}/releases).
+          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.actor }}/${{ inputs.repository }}/releases).
           
           ## What is Online Gradle?
           
