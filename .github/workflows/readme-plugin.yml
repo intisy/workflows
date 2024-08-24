@@ -41,6 +41,7 @@ jobs:
         run: |
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
           IFS='|' read -ra lines <<< "$example"
+          echo ${{ inputs.actor }}
           cat <<EOF > README.md
           # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
           
