@@ -52,7 +52,7 @@ jobs:
           
           \`\`\`groovy
           plugins {
-            id "io.github.intisy.${{ inputs.repository }}" version "${{ steps.get_latest_tag.outputs.tag }}"
+              id "io.github.intisy.${{ inputs.repository }}" version "${{ steps.get_latest_tag.outputs.tag }}"
           }
           \`\`\`
           
@@ -60,14 +60,14 @@ jobs:
           
           \`\`\`groovy
           buildscript {
-            repositories {
-              maven {
-                url "https://plugins.gradle.org/m2/"
+              repositories {
+                  maven {
+                      url "https://plugins.gradle.org/m2/"
+                  }
               }
-            }
-            dependencies {
-              classpath "io.github.intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
-            }
+              dependencies {
+                  classpath "io.github.intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
+              }
           }
           
           apply plugin: "io.github.intisy.${{ inputs.repository }}"
