@@ -94,6 +94,10 @@ jobs:
                 githubImplementation "intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
             }
           \`\`\`
+          
+          ## License
+          
+          [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
           
       - name: Commit changes

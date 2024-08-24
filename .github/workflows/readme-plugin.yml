@@ -48,17 +48,17 @@ jobs:
           
           ## Usage
           
-          You can add the plugin like this and add as many codeartifact repositories, as you want:
+          Using the plugins DSL:
           
-          ```groovy
+          \`\`\`groovy
           plugins {
             id "io.github.intisy.${{ inputs.repository }}" version "${{ steps.get_latest_tag.outputs.tag }}"
           }
-          ```
+          \`\`\`
           
-          Or to add repositories to the Publishing plugin:
+          Using legacy plugin application:
           
-          ```groovy
+          \`\`\`groovy
           buildscript {
             repositories {
               maven {
@@ -71,7 +71,7 @@ jobs:
           }
           
           apply plugin: "io.github.intisy.${{ inputs.repository }}"
-          ```
+          \`\`\`
           
           Once you have the plugin installed you can use it like so:
           
@@ -80,7 +80,6 @@ jobs:
           ## License
           
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-          \`\`\`
           EOF
           
       - name: Commit changes
