@@ -37,9 +37,8 @@ jobs:
               continue
             fi
             echo "Creating release '$release_name'..."
-            gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$file"
             cd releases
             mv $file_name $repo
-            gh release upload "$release_name" $repo --clobber
+            gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$repo"
             mv $repo $file_name
           done
