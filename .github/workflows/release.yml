@@ -40,6 +40,6 @@ jobs:
             gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$file"
             cd releases
             mv $file_name $repo
-            gh release upload "$release_name" $file --clobber
+            gh release upload "$release_name" $repo --clobber
             mv $repo $file_name
           done
