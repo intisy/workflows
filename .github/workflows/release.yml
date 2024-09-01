@@ -20,6 +20,7 @@ jobs:
       - name: Loop through files and create releases
         run: |
           for file in releases/*; do
+            file_name=$file
             release_name=$(${file%.*})
             if gh release view "$release_name" > /dev/null 2>&1; then
               echo "Release '$release_name' already exists. Skipping..."
@@ -27,5 +28,5 @@ jobs:
             fi
             echo "Creating release '$release_name'..."
             gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$file"
-            gh release upload "$release_name" releases/$file --clobber
+            gh release upload "$release_name" releases/$file_name --clobber
           done
