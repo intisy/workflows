@@ -1,0 +1,33 @@
+name: Release
+on:
+  workflow_call:
+    secrets:
+      envPAT:
+        required: true
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project sources
+        uses: actions/checkout@v4
+
+      - name: Debug Releases
+        run: gh release list
+
+      - name: Set up GitHub CLI
+        uses: actions/setup-gh@v2
+        with:
+          token: ${{ secrets.envPAT }}
+
+      - name: Loop through files and create releases
+        run: |
+          for file in releases/*; do
+            release_name=$(basename "$file" | cut -f 1 -d '.')
+            if gh release view "$release_name" > /dev/null 2>&1; then
+              echo "Release '$release_name' already exists. Skipping..."
+              continue
+            fi
+            echo "Creating release '$release_name'..."
+            gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$file"
+            gh release upload "$release_name" releases/$file --clobber
+          done
