@@ -11,11 +11,11 @@ jobs:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
-      - name: Debug Releases
-        run: gh release list
-
       - name: Setup Git
         run: echo ${{ secrets.envPAT }} | gh auth login --with-token
+
+      - name: Debug Releases
+        run: gh release list
 
       - name: Loop through files and create releases
         run: |
