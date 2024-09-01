@@ -20,7 +20,7 @@ jobs:
       - name: Loop through files and create releases
         run: |
           for file in releases/*; do
-            release_name=$(basename "$file" | cut -f 1 -d '.')
+            release_name=$(basename "$file" | cut -f 1 -d '.jar')
             if gh release view "$release_name" > /dev/null 2>&1; then
               echo "Release '$release_name' already exists. Skipping..."
               continue
