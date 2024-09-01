@@ -1,10 +1,11 @@
 name: Release
 on:
   workflow_call:
-    repository:
-      description: 'repository'
-      required: true
-      type: string
+    inputs:
+      repository:
+        description: 'repository'
+        required: true
+        type: string
     secrets:
       envPAT:
         required: true
