@@ -27,7 +27,7 @@ jobs:
           for file in releases/*; do
             file_name="${file##*/}"
             full_repo=${{ inputs.repository }}
-            repo="${full_repo##*/}"
+            repo="releases/${full_repo##*/}"
             echo "Uploading $file_name"
             middle=$(echo "$file_name" | awk -F'-' '{print $2}')
             release_name="${middle%.jar}"
@@ -38,7 +38,7 @@ jobs:
             fi
             echo "Creating release '$release_name'..."
             cd releases
-            mv $file_name $repo
+            mv $file $repo
             gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$repo"
             mv $repo $file_name
           done
