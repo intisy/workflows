@@ -20,7 +20,7 @@ jobs:
       - name: Loop through files and create releases
         run: |
           for file in releases/*; do
-            file_name="${filepath##*/}"
+            file_name="${file##*/}"
             echo "Uploading $file_name"
             release_name=$(${file_name%.*})
             echo "Using tag $release_name"
