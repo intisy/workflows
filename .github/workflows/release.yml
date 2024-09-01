@@ -1,6 +1,10 @@
 name: Release
 on:
   workflow_call:
+    repository:
+      description: 'repository'
+      required: true
+      type: string
     secrets:
       envPAT:
         required: true
@@ -30,5 +34,5 @@ jobs:
             fi
             echo "Creating release '$release_name'..."
             gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$file"
-            gh release upload "$release_name" $file --clobber
+            gh release upload "$release_name" $file --clobber --name "${{ inputs.repository }}"
           done

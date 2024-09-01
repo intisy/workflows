@@ -9,3 +9,5 @@ jobs:
     uses: intisy/workflows/.github/workflows/release.yml@main
     secrets:
       envPAT: ${{ secrets.PAT }}
+    with:
+      repository: ${{ github.repository }}
