@@ -14,10 +14,8 @@ jobs:
       - name: Debug Releases
         run: gh release list
 
-      - name: Set up GitHub CLI
-        uses: actions/setup-gh@v2
-        with:
-          token: ${{ secrets.envPAT }}
+      - name: Setup Git
+        run: echo ${{ secrets.envPAT }} | gh auth login --with-token
 
       - name: Loop through files and create releases
         run: |
