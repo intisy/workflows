@@ -20,8 +20,10 @@ jobs:
       - name: Loop through files and create releases
         run: |
           for file in releases/*; do
+            echo "Uploading $file"
             file_name=$file
             release_name=$(${file%.*})
+            echo "Using tag $release_name"
             if gh release view "$release_name" > /dev/null 2>&1; then
               echo "Release '$release_name' already exists. Skipping..."
               continue
