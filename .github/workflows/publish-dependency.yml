@@ -30,6 +30,6 @@ jobs:
           echo "::set-output name=tag::$latest_tag"
 
       - name: Publish to GitHub Packages Apache Maven
-        run: ./gradlew publish -Pversion=${{ steps.get_latest_tag.outputs.tag }}
+        run: ./gradlew publish -Partifact_version=${{ steps.get_latest_tag.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.envPAT }}
