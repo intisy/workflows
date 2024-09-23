@@ -50,12 +50,12 @@ jobs:
           \`\`\`xml
             <repository>
                 <id>github</id>
-                <url>https://maven.pkg.github.com/${{ inputs.actor }}/${{ inputs.repository }}</url>
+                <url>https://maven.pkg.github.com/${{ inputs.actor }}/$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)</url>
                 <snapshots><enabled>true</enabled></snapshots>
             </repository>
             <dependency>
                 <groupId>io.github.intisy</groupId>
-                <artifactId>${{ github.repository }}</artifactId>
+                <artifactId>$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)</artifactId>
                 <version>${{ steps.get_latest_tag.outputs.tag }}</version>
             </dependency>
           \`\`\`
@@ -65,8 +65,8 @@ jobs:
             <servers>
                 <server>
                     <id>github</id>
-                    <username><your-username></username>
-                    <password><your-access-token></password>
+                    <username>your-username</username>
+                    <password>your-access-token</password>
                 </server>
             </servers>
           \`\`\`
@@ -75,7 +75,7 @@ jobs:
           \`\`\`groovy
             repositories {
                 maven {
-                    url "https://maven.pkg.github.com/${{ inputs.actor }}/${{ inputs.repository }}"
+                    url "https://maven.pkg.github.com/${{ inputs.actor }}/$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)"
                     credentials {
                         username = "<your-username>"
                         password = "<your-access-token>"
@@ -83,7 +83,7 @@ jobs:
                 }
             }
             dependencies {
-                implementation 'io.github.intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}'
+                implementation 'io.github.intisy:$(echo "${{ inputs.repository }}" | cut -d'=' -f2-):${{ steps.get_latest_tag.outputs.tag }}'
             }
           \`\`\`
           
@@ -95,7 +95,7 @@ jobs:
                 id "io.github.intisy.github-gradle" version "1.1"
             }
             dependencies {
-                githubImplementation "intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
+                githubImplementation "intisy:$(echo "${{ inputs.repository }}" | cut -d'=' -f2-):${{ steps.get_latest_tag.outputs.tag }}"
             }
           \`\`\`
           
