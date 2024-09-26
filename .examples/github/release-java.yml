@@ -1,4 +1,4 @@
-name: Release
+name: Release Java
 on:
   push:
     branches:
@@ -6,7 +6,7 @@ on:
       - master
 jobs:
   call-reusable-workflow:
-    uses: intisy/workflows/.github/workflows/release.yml@main
+    uses: intisy/workflows/.github/workflows/release-java.yml@main
     with:
       repository: ${{ github.repository }}
     secrets:

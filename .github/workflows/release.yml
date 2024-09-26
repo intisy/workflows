@@ -2,8 +2,8 @@ name: Release
 on:
   workflow_call:
     inputs:
-      repository:
-        description: 'repository'
+      ref_name:
+        description: 'ref_name'
         required: true
         type: string
     secrets:
@@ -23,23 +23,4 @@ jobs:
         run: gh release list
 
       - name: Loop through files and create releases
-        run: |
-          for file in releases/*; do
-            file_name="${file##*/}"
-            full_repo=${{ inputs.repository }}
-            repo="${full_repo##*/}.jar"
-            echo "Uploading $file_name"
-            middle=$(echo "$file_name" | awk -F'-' '{print $2}')
-            release_name="${middle%.jar}"
-            echo "Using tag $release_name"
-            if gh release view "$release_name" > /dev/null 2>&1; then
-              echo "Release '$release_name' already exists. Skipping..."
-              continue
-            fi
-            echo "Creating release '$release_name'..."
-            cd releases
-            mv "$file_name" $repo
-            gh release create "$release_name" --title "$release_name" --notes "Release created from file $file" "$repo"
-            mv $repo "$file_name"
-            cd ..
-          done
+        run: gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}"
