@@ -42,7 +42,7 @@ jobs:
           cat <<EOF > README.md
           # $(grep "^$display_name=" "gradle.properties" | cut -d'=' -f2-)
           
-          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.actor }}/${{ inputs.repository }}/releases).
+          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
           
           ## Usage in private repos (faster)
           
@@ -50,12 +50,12 @@ jobs:
           \`\`\`xml
             <repository>
                 <id>github</id>
-                <url>https://maven.pkg.github.com/${{ inputs.actor }}/$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)</url>
+                <url>https://maven.pkg.github.com/${{ inputs.repository }}</url>
                 <snapshots><enabled>true</enabled></snapshots>
             </repository>
             <dependency>
                 <groupId>io.github.intisy</groupId>
-                <artifactId>$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)</artifactId>
+                <artifactId>$(echo "${{ inputs.repository }} | cut -d'/' -f2)</artifactId>
                 <version>${{ steps.get_latest_tag.outputs.tag }}</version>
             </dependency>
           \`\`\`
@@ -75,7 +75,7 @@ jobs:
           \`\`\`groovy
             repositories {
                 maven {
-                    url "https://maven.pkg.github.com/${{ inputs.actor }}/$(echo "${{ inputs.repository }}" | cut -d'=' -f2-)"
+                    url "https://maven.pkg.github.com/${{ inputs.repository }}"
                     credentials {
                         username = "<your-username>"
                         password = "<your-access-token>"
@@ -83,7 +83,7 @@ jobs:
                 }
             }
             dependencies {
-                implementation 'io.github.intisy:$(echo "${{ inputs.repository }}" | cut -d'=' -f2-):${{ steps.get_latest_tag.outputs.tag }}'
+                implementation 'io.github.${{ inputs.actor }}:$(echo "${{ inputs.repository }} | cut -d'/' -f2):${{ steps.get_latest_tag.outputs.tag }}'
             }
           \`\`\`
           
@@ -92,10 +92,10 @@ jobs:
            * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
           \`\`\`groovy
             plugins {
-                id "io.github.intisy.github-gradle" version "1.1"
+                id "io.github.${{ inputs.actor }}.$(echo "${{ inputs.repository }} | cut -d'/' -f2)" version "${{ steps.get_latest_tag.outputs.tag }}"
             }
             dependencies {
-                githubImplementation "intisy:$(echo "${{ inputs.repository }}" | cut -d'=' -f2-):${{ steps.get_latest_tag.outputs.tag }}"
+                githubImplementation "${{ inputs.actor }}:$(echo "${{ inputs.repository }} | cut -d'/' -f2):${{ steps.get_latest_tag.outputs.tag }}"
             }
           \`\`\`
           

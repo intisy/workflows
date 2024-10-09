@@ -41,11 +41,10 @@ jobs:
         run: |
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
           IFS='|' read -ra lines <<< "$example"
-          echo ${{ inputs.actor }}
           cat <<EOF > README.md
           # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
           
-          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.actor }}/${{ inputs.repository }}/releases).
+          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
           
           ## What is Online Gradle?
           
@@ -57,7 +56,7 @@ jobs:
           
           \`\`\`groovy
           plugins {
-              id "io.github.intisy.${{ inputs.repository }}" version "${{ steps.get_latest_tag.outputs.tag }}"
+              id "io.github.${{ inputs.actor }}.$(echo "${{ inputs.repository }}" | cut -d'/' -f2)" version "${{ steps.get_latest_tag.outputs.tag }}"
           }
           \`\`\`
           
@@ -71,11 +70,11 @@ jobs:
                   }
               }
               dependencies {
-                  classpath "io.github.intisy:${{ inputs.repository }}:${{ steps.get_latest_tag.outputs.tag }}"
+                  classpath "io.github.${{ inputs.actor }}.$(echo "${{ inputs.repository }}" | cut -d'/' -f2):${{ steps.get_latest_tag.outputs.tag }}"
               }
           }
           
-          apply plugin: "io.github.intisy.${{ inputs.repository }}"
+          apply plugin: "io.github.${{ inputs.actor }}.$(echo "${{ inputs.repository }}" | cut -d'/' -f2)"
           \`\`\`
           
           Once you have the plugin installed you can use it like so:
