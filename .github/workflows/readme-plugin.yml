@@ -41,7 +41,7 @@ jobs:
         run: |
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
-          echo $$repo
+          echo $repo
           IFS='|' read -ra lines <<< "$example"
           cat <<EOF > README.md
           # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
@@ -72,11 +72,11 @@ jobs:
                   }
               }
               dependencies {
-                  classpath "io.github.${{ inputs.actor }}.$$repo:${{ steps.get_latest_tag.outputs.tag }}"
+                  classpath "io.github.${{ inputs.actor }}.$repo:${{ steps.get_latest_tag.outputs.tag }}"
               }
           }
           
-          apply plugin: "io.github.${{ inputs.actor }}.$$repo"
+          apply plugin: "io.github.${{ inputs.actor }}.$repo"
           \`\`\`
           
           Once you have the plugin installed you can use it like so:
