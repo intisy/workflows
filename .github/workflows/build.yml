@@ -16,11 +16,12 @@ jobs:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
-      - name: Download and install BellSoft Liberica JDK 8 Full
+      - name: Download and install BellSoft Liberica JDK 8 Full (with JavaFX)
         run: |
           wget https://download.bell-sw.com/java/8u372+7/bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
           tar -xzf bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
-          sudo mv jdk8u372+7 /opt/bellsoft-jdk8u372-full
+          ls # Check the directory name after extraction
+          sudo mv bellsoft-jdk8u372+7 /opt/bellsoft-jdk8u372-full
           echo "JAVA_HOME=/opt/bellsoft-jdk8u372-full" >> $GITHUB_ENV
           echo "/opt/bellsoft-jdk8u372-full/bin" >> $GITHUB_PATH
 
