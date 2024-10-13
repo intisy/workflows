@@ -17,6 +17,14 @@ jobs:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
+      - name: Set up BellSoft Liberica JDK 1.8 (Full)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'liberica'
+          java-version: '8'
+          architecture: 'x64'
+          cache: 'gradle'
+
       - name: Setup Git
         run: echo ${{ secrets.envPAT }} | gh auth login --with-token
         
