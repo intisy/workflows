@@ -11,19 +11,18 @@ on:
         required: true
 jobs:
   build-and-upload:
-    # runs-on: ubuntu-latest
-    runs-on: windows-2019 # windows seems to work better for building gradle
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
-      - name: Set up BellSoft Liberica JDK 1.8 (Full)
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'liberica'
-          java-version: '8'
-          architecture: 'x64'
-          cache: 'gradle'
+      - name: Download and install BellSoft Liberica JDK 8 Full
+        run: |
+          wget https://download.bell-sw.com/java/8u372+7/bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
+          tar -xzf bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
+          sudo mv jdk8u372+7 /opt/bellsoft-jdk8u372-full
+          echo "JAVA_HOME=/opt/bellsoft-jdk8u372-full" >> $GITHUB_ENV
+          echo "/opt/bellsoft-jdk8u372-full/bin" >> $GITHUB_PATH
 
       - name: Setup Git
         run: echo ${{ secrets.envPAT }} | gh auth login --with-token
