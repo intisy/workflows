@@ -11,7 +11,8 @@ on:
         required: true
 jobs:
   build-and-upload:
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: windows-2019 # windows seems to work better for building gradle
     steps:
       - name: Checkout project sources
         uses: actions/checkout@v4
