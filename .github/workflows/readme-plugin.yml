@@ -94,3 +94,5 @@ jobs:
           message: 'Auto-update README'
           add: 'README.md'
           new_branch: main
+          committer_name: github-actions[bot]
+          committer_email: github-actions[bot]@users.noreply.github.com
