@@ -104,6 +104,7 @@ jobs:
           
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
+          git pull
           
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
