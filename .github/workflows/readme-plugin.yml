@@ -39,6 +39,7 @@ jobs:
       - name: Update README
         id: update_readme
         run: |
+          git pull origin main
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
           echo $repo
@@ -87,7 +88,6 @@ jobs:
           
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
-          git pull origin main
           
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
