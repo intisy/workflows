@@ -35,7 +35,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run build with Gradle Wrapper
-        run: ./gradlew build
+        run: ./gradlew build -Partifact_version=${{ inputs.ref_name }}
 
       - name: Debug Releases
         run: gh release list
