@@ -39,7 +39,7 @@ jobs:
       - name: Update README
         id: update_readme
         run: |
-          git pull origin main
+          git pull origin main --no-rebase
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
           cat <<EOF > README.md
           # $(grep "^$display_name=" "gradle.properties" | cut -d'=' -f2-)
