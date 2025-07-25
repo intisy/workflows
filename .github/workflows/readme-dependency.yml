@@ -40,34 +40,45 @@ jobs:
         id: update_readme
         run: |
           git pull origin main --no-rebase
+          example=$(grep '^example=' github.properties | cut -d'=' -f2-)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
+          display_name=$(grep "^$display_name=" gradle.properties | cut -d'=' -f2-)
+          description=$(grep '^description=' github.properties | cut -d'=' -f2-)
+          latest_tag="${{ steps.get_latest_tag.outputs.tag }}"
+          actor="${{ inputs.actor }}"
+          repository="${{ inputs.repository }}"
+          
           cat <<EOF > README.md
-          # $(grep "^$display_name=" "gradle.properties" | cut -d'=' -f2-)
-          
-          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
-          
-          ## What is ${{ inputs.repository }}?
-          
-          $(grep "^description=" "github.properties" | cut -d'=' -f2-)
-          
-          ## Usage in private repos (faster)
-          
+          # $display_name
+
+          Archives containing JAR files are available as [releases](https://github.com/$repository/releases).
+
+          ## What is $repository?
+
+          $description
+
+          ## Example
+
+          $example
+
+          ## Usage in private projects
+
            * Maven (inside the `pom.xml` file)
-          \`\`\`xml
+          ```xml
             <repository>
                 <id>github</id>
-                <url>https://maven.pkg.github.com/${{ inputs.repository }}</url>
+                <url>https://maven.pkg.github.com/$repository</url>
                 <snapshots><enabled>true</enabled></snapshots>
             </repository>
             <dependency>
                 <groupId>io.github.intisy</groupId>
                 <artifactId>$repo</artifactId>
-                <version>${{ steps.get_latest_tag.outputs.tag }}</version>
+                <version>$latest_tag</version>
             </dependency>
-          \`\`\`
-          
+          ```
+
            * Maven (inside the `settings.xml` file)
-          \`\`\`xml
+          ```xml
             <servers>
                 <server>
                     <id>github</id>
@@ -93,7 +104,7 @@ jobs:
             }
           \`\`\`
           
-          ## Usage in public repos (slower and only works in gradle but safer)
+          ## Usage in public projects
           
            * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
           \`\`\`groovy

@@ -40,32 +40,40 @@ jobs:
         id: update_readme
         run: |
           git pull origin main
-          example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
+          example=$(grep '^example=' github.properties | cut -d'=' -f2-)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
-          echo $repo
-          IFS='|' read -ra lines <<< "$example"
+          display_name=$(grep '^display_name=' gradle.properties | cut -d'=' -f2-)
+          description=$(grep '^description=' github.properties | cut -d'=' -f2-)
+          latest_tag="${{ steps.get_latest_tag.outputs.tag }}"
+          actor="${{ inputs.actor }}"
+          repository="${{ inputs.repository }}"
+          
           cat <<EOF > README.md
-          # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
-          
-          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
-          
-          ## What is ${{ inputs.repository }}?
-          
-          $(grep "^description=" "github.properties" | cut -d'=' -f2-)
-          
+          # $display_name
+
+          Archives containing JAR files are available as [releases](https://github.com/$repository/releases).
+
+          ## What is $repository?
+
+          $description
+
+          ## Example
+
+          $example
+
           ## Usage
-          
+
           Using the plugins DSL:
-          
-          \`\`\`groovy
+
+          ```groovy
           plugins {
-              id "io.github.${{ inputs.actor }}.$repo" version "${{ steps.get_latest_tag.outputs.tag }}"
+              id "io.github.$actor.$repo" version "$latest_tag"
           }
-          \`\`\`
-          
+          ```
+
           Using legacy plugin application:
-          
-          \`\`\`groovy
+
+          ```groovy
           buildscript {
               repositories {
                   maven {
@@ -73,19 +81,15 @@ jobs:
                   }
               }
               dependencies {
-                  classpath "io.github.${{ inputs.actor }}.$repo:${{ steps.get_latest_tag.outputs.tag }}"
+                  classpath "io.github.$actor.$repo:$latest_tag"
               }
           }
-          
-          apply plugin: "io.github.${{ inputs.actor }}.$repo"
-          \`\`\`
-          
-          Once you have the plugin installed you can use it like so:
-          
-          $(for line in "${lines[@]}"; do echo "$line"; done)
-          
+
+          apply plugin: "io.github.$actor.$repo"
+          ```
+
           ## License
-          
+
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
           
