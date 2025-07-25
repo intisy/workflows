@@ -46,6 +46,10 @@ jobs:
           
           Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
           
+          ## What is ${{ inputs.repository }}?
+          
+          $(grep "^description=" "github.properties" | cut -d'=' -f2-)
+          
           ## Usage in private repos (faster)
           
            * Maven (inside the `pom.xml` file)

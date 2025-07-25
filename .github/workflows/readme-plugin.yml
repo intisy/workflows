@@ -49,7 +49,7 @@ jobs:
           
           Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
           
-          ## What is Online Gradle?
+          ## What is ${{ inputs.repository }}?
           
           $(grep "^description=" "github.properties" | cut -d'=' -f2-)
           
