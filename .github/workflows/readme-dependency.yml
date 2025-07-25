@@ -47,7 +47,6 @@ jobs:
           latest_tag="${{ steps.get_latest_tag.outputs.tag }}"
           actor="${{ inputs.actor }}"
           repository="${{ inputs.repository }}"
-          
           cat <<EOF > README.md
           # $display_name
 
