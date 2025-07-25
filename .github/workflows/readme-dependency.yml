@@ -90,13 +90,13 @@ jobs:
                     <password>your-access-token</password>
                 </server>
             </servers>
-          \`\`\`
-          
+          ```
+
            * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
-          \`\`\`groovy
+          ```groovy
             repositories {
                 maven {
-                    url "https://maven.pkg.github.com/${{ inputs.repository }}"
+                    url "https://maven.pkg.github.com/$repository"
                     credentials {
                         username = "<your-username>"
                         password = "<your-access-token>"
@@ -104,24 +104,24 @@ jobs:
                 }
             }
             dependencies {
-                implementation 'io.github.${{ inputs.actor }}:$repo:${{ steps.get_latest_tag.outputs.tag }}'
+                implementation 'io.github.$actor:$repo:$latest_tag'
             }
-          \`\`\`
-          
+          ```
+
           ## Usage in public projects
-          
+
            * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
-          \`\`\`groovy
+          ```groovy
             plugins {
                 id "io.github.intisy.github-gradle" version "1.3.7"
             }
             dependencies {
-                githubImplementation "${{ inputs.actor }}:$repo:${{ steps.get_latest_tag.outputs.tag }}"
+                githubImplementation "$actor:$repo:$latest_tag"
             }
-          \`\`\`
-          
+          ```
+
           ## License
-          
+
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
           
