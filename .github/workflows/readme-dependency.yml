@@ -42,11 +42,14 @@ jobs:
           git pull origin main --no-rebase
           example=$(grep '^example=' github.properties | cut -d'=' -f2-)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
-          display_name=$(grep "^$display_name=" gradle.properties | cut -d'=' -f2-)
+          display_name=$(grep '^display_name=' gradle.properties | cut -d'=' -f2-)
           description=$(grep '^description=' github.properties | cut -d'=' -f2-)
           latest_tag="${{ steps.get_latest_tag.outputs.tag }}"
           actor="${{ inputs.actor }}"
           repository="${{ inputs.repository }}"
+          # Format example as code block, splitting on '|'
+          example_code=$(echo "$example" | sed -n '/^```/,$p' | sed 's/^```//;s/```$//')
+          formatted_example=$(echo "$example_code" | tr '|' '\n')
           cat <<EOF > README.md
           # $display_name
 
@@ -58,7 +61,9 @@ jobs:
 
           ## Example
 
-          $example
+          ```java
+          $formatted_example
+          ```
 
           ## Usage in private projects
 
