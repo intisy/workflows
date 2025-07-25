@@ -52,7 +52,7 @@ jobs:
           
           $(grep "^description=" "github.properties" | cut -d'=' -f2-)
           
-          ## Usage in private repos (faster)
+          ## Usage in private projects
           
            * Maven (inside the `pom.xml` file)
           \`\`\`xml
@@ -95,7 +95,7 @@ jobs:
             }
           \`\`\`
           
-          ## Usage in public repos (slower and only works in gradle but safer)
+          ## Usage in public projects
           
            * Gradle (inside the `build.gradle.kts` or `build.gradle` file)
           \`\`\`groovy
