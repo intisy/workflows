@@ -47,10 +47,43 @@ jobs:
         id: update_readme
         run: |
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
+          owner=$(echo "${{ inputs.repository }}" | cut -d'/' -f1)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
+          tag="${{ steps.get_latest_tag.outputs.tag }}"
           IFS='|' read -ra lines <<< "$example"
+
+          # A multi-module release attaches several <repo>-<module>.jar assets (sources/javadoc excluded).
+          # Only then render a Modules section, so single-jar dependencies stay unchanged.
+          modules=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" "https://api.github.com/repos/${{ inputs.repository }}/releases/tags/$tag" | jq -r '.assets[].name' | grep -E "^${repo}-.*\.jar$" | grep -vE -- '-(sources|javadoc)\.jar$' | sed -E "s/^${repo}-(.*)\.jar\$/\1/" | sort -u)
+          module_count=$(printf '%s\n' "$modules" | grep -c . || true)
+          : > modules_section.md
+          if [ "$module_count" -gt 1 ]; then
+            {
+              echo ""
+              echo "## Modules"
+              echo ""
+              echo "\`$repo\` is published as separate modules. Pull every module at once with the \`all\` classifier:"
+              echo ""
+              echo "\`\`\`groovy"
+              echo "dependencies {"
+              echo "    githubImplementation \"$owner:$repo:$tag:all\""
+              echo "}"
+              echo "\`\`\`"
+              echo ""
+              echo "Or depend on individual modules:"
+              echo ""
+              echo "\`\`\`groovy"
+              echo "dependencies {"
+              while IFS= read -r module; do
+                [ -z "$module" ] && continue
+                echo "    githubImplementation \"$owner:$repo:$tag:$module\""
+              done <<< "$modules"
+              echo "}"
+              echo "\`\`\`"
+            } > modules_section.md
+          fi
           cat <<EOF > README.md
-          # $(grep "^$display_name=" "gradle.properties" | cut -d'=' -f2-)
+          # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
           
           Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
           
@@ -112,7 +145,8 @@ jobs:
                 githubImplementation "${{ inputs.actor }}:$repo:${{ steps.get_latest_tag.outputs.tag }}"
             }
           \`\`\`
-          
+          $(cat modules_section.md)
+
           Once you have it installed you can use it like so:
           
           $(for line in "${lines[@]}"; do echo "$line"; done)
@@ -121,7 +155,8 @@ jobs:
           
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
-          
+          rm -f modules_section.md
+
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
         with:
