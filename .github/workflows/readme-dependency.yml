@@ -15,6 +15,11 @@ on:
         required: false
         type: string
         default: 'main'
+      tag:
+        description: 'explicit release tag to document (falls back to the latest numeric tag)'
+        required: false
+        type: string
+        default: ''
     secrets:
       envPAT:
         required: true
@@ -34,7 +39,11 @@ jobs:
       - name: Get latest tag
         id: get_latest_tag
         run: |
-          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" https://api.github.com/repos/${{ inputs.repository }}/tags | jq -r '.[].name' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -n1)
+          if [ -n "${{ inputs.tag }}" ]; then
+            latest_tag="${{ inputs.tag }}"
+          else
+            latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" https://api.github.com/repos/${{ inputs.repository }}/tags | jq -r '.[].name' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -n1)
+          fi
           echo "Latest tag: $latest_tag"
           echo "::set-output name=tag::$latest_tag"
 
