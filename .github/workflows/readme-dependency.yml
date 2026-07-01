@@ -56,10 +56,24 @@ jobs:
         id: update_readme
         run: |
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
+          guide=$(grep "^guide=" "github.properties" | cut -d'=' -f2- || true)
           owner=$(echo "${{ inputs.repository }}" | cut -d'/' -f1)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
           tag="${{ steps.get_latest_tag.outputs.tag }}"
           IFS='|' read -ra lines <<< "$example"
+
+          # Render an optional Guide section only when github.properties defines guide=.
+          # Repositories without that key produce a byte-identical README (no Guide section).
+          : > guide_section.md
+          if [ -n "$guide" ]; then
+            IFS='|' read -ra guide_lines <<< "$guide"
+            {
+              echo ""
+              echo "## Guide"
+              echo ""
+              for line in "${guide_lines[@]}"; do echo "$line"; done
+            } > guide_section.md
+          fi
 
           # A multi-module release attaches several <repo>-<module>.jar assets (sources/javadoc excluded).
           # Only then render a Modules section, so single-jar dependencies stay unchanged.
@@ -157,14 +171,14 @@ jobs:
           $(cat modules_section.md)
 
           Once you have it installed you can use it like so:
-          
-          $(for line in "${lines[@]}"; do echo "$line"; done)
-          
+
+          $(for line in "${lines[@]}"; do echo "$line"; done; cat guide_section.md)
+
           ## License
-          
+
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
-          rm -f modules_section.md
+          rm -f modules_section.md guide_section.md
 
       - name: Commit changes
         uses: EndBug/add-and-commit@v9

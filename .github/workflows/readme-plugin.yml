@@ -41,8 +41,22 @@ jobs:
         run: |
           git pull origin main
           example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
+          guide=$(grep "^guide=" "github.properties" | cut -d'=' -f2- || true)
           repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
           IFS='|' read -ra lines <<< "$example"
+
+          # Render an optional Guide section only when github.properties defines guide=.
+          # Repositories without that key produce a byte-identical README (no Guide section).
+          : > guide_section.md
+          if [ -n "$guide" ]; then
+            IFS='|' read -ra guide_lines <<< "$guide"
+            {
+              echo ""
+              echo "## Guide"
+              echo ""
+              for line in "${guide_lines[@]}"; do echo "$line"; done
+            } > guide_section.md
+          fi
           cat <<EOF > README.md
           # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
           
@@ -80,14 +94,15 @@ jobs:
           \`\`\`
           
           Once you have the plugin installed you can use it like so:
-          
-          $(for line in "${lines[@]}"; do echo "$line"; done)
-          
+
+          $(for line in "${lines[@]}"; do echo "$line"; done; cat guide_section.md)
+
           ## License
-          
+
           [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
           EOF
-          
+          rm -f guide_section.md
+
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
         with:
