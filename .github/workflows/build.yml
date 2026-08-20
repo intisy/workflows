@@ -6,6 +6,21 @@ on:
         description: 'ref_name'
         required: true
         type: string
+      java_version:
+        description: 'Java version handed to actions/setup-java; ignored when jdk_distribution is liberica-full'
+        required: false
+        type: string
+        default: '8'
+      jdk_distribution:
+        description: 'liberica-full installs BellSoft Liberica Full (bundled JavaFX) from bell-sw.com; any other value is handed to actions/setup-java'
+        required: false
+        type: string
+        default: 'liberica-full'
+      liberica_full_release:
+        description: 'BellSoft Liberica Full release to install when jdk_distribution is liberica-full'
+        required: false
+        type: string
+        default: '8u372+7'
     secrets:
       envPAT:
         required: true
@@ -16,21 +31,30 @@ jobs:
       - name: Checkout project sources
         uses: actions/checkout@v4
 
-      - name: Download and install BellSoft Liberica JDK 8 Full (with JavaFX)
+      - name: Download and install BellSoft Liberica JDK Full (with JavaFX)
+        if: inputs.jdk_distribution == 'liberica-full'
         run: |
-          wget https://download.bell-sw.com/java/8u372+7/bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
-          tar -xzf bellsoft-jdk8u372+7-linux-amd64-full.tar.gz
-          ls # Check the directory name after extraction
-          sudo mv jdk8u372-full /opt/bellsoft-jdk8u372-full
-          echo "JAVA_HOME=/opt/bellsoft-jdk8u372-full" >> $GITHUB_ENV
-          echo "/opt/bellsoft-jdk8u372-full/bin" >> $GITHUB_PATH
+          release="${{ inputs.liberica_full_release }}"
+          dir="jdk${release%%+*}-full"
+          wget "https://download.bell-sw.com/java/${release}/bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          tar -xzf "bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          sudo mv "$dir" "/opt/bellsoft-$dir"
+          echo "JAVA_HOME=/opt/bellsoft-$dir" >> $GITHUB_ENV
+          echo "/opt/bellsoft-$dir/bin" >> $GITHUB_PATH
+
+      - name: Setup Java
+        if: inputs.jdk_distribution != 'liberica-full'
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
 
       - name: Setup Git
         run: echo ${{ secrets.envPAT }} | gh auth login --with-token
-        
+
       - name: Setup Gradle
         uses: gradle/gradle-build-action@v3
-        
+
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
@@ -42,5 +66,5 @@ jobs:
 
       - name: Create Release and Upload Jar
         run: |
-            gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}"
-            gh release upload "${{ inputs.ref_name }}" build/libs/* --clobber
+          gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}"
+          gh release upload "${{ inputs.ref_name }}" build/libs/* --clobber
