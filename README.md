@@ -25,6 +25,71 @@ jobs:
 
 More caller templates live in [`.examples`](.examples).
 
+## Generated READMEs
+
+`readme.yml` renders `README.md` from two files a repository keeps on its development branch:
+`.github/docs-config.yml` for the settings and `CONTENT.md` for its own prose. Nothing about a
+README is hand-written, and the README only ever lands on the default branch.
+
+`kind` picks the section set. Without it the generator reads the checkout: a
+`src/main/resources/plugin.yml` means `addon`, a Gradle or Maven build means `java-library`, a
+`package.json` means `npm-package`, anything else is `generic`.
+
+| kind | sections |
+| --- | --- |
+| `addon` | logo, title, badges, description, requirements, content, developer-api, wiki, discord, license-prose |
+| `gradle-plugin` | title, releases, about, plugin-usage, content, license-badge |
+| `java-library` | title, releases, about, library-usage-private, library-usage-public, modules, content, license-badge |
+| `npm-package` | title, badges, description, npm-install, content, license-badge |
+| `generic` | logo, title, badges, description, content, license-badge |
+
+A `sections:` list replaces the kind's order outright and a `badges:` list replaces its badge set
+(`build`, `downloads`, `followers`, `stars`, `bstats`, `license`, `release`, `npm-version`,
+`npm-downloads`). A section whose source is missing renders nothing, so a repository without a
+LICENSE, a description, a release or a `CONTENT.md` never grows an empty heading.
+
+Values the generator can read for itself are not settings: the title and description come from
+`gradle.properties` or `package.json`, the Maven group from `artifact_group`, the licence from the
+LICENSE file or the `package.json` SPDX id, the module list from the release's classifier assets,
+and the offline version from `artifact_version` or the `package.json` version.
+
+### Placeholders
+
+`CONTENT.md` and every prose setting take `{{ placeholder }}` substitutions, so a long
+`CONTENT.md` still tracks the release it documents instead of freezing at whatever was true the
+day it was written:
+
+```groovy
+githubImplementation "{{ org }}:{{ artifact }}:{{ tag }}"
+```
+
+`${{ github.repository }}` is left alone, because a GitHub Actions expression is not a
+placeholder, and a leading backslash escapes one. A placeholder the repository cannot resolve
+stays visible in the rendered README and is reported on stderr, never silently emptied.
+
+Every setting in `docs-config.yml` is a placeholder under its own name (`{{ java }}`,
+`{{ paper }}`, `{{ discord }}` and so on), alongside these derived values:
+
+| placeholder | value |
+| --- | --- |
+| `org`, `repo`, `repository` | owner, name, and `owner/name` |
+| `repo_url`, `releases_url`, `release_url` | the repository, its releases page, this release |
+| `tag`, `version` | the release tag, and the tag without a leading `v` |
+| `release_date` | the release's publication date, `YYYY-MM-DD` |
+| `default_branch` | the branch the README is generated on |
+| `kind` | the resolved kind |
+| `title`, `description` | as rendered in the README |
+| `license`, `license_slug` | the licence name and its shields.io slug |
+| `artifact`, `group`, `plugin_id` | the published coordinates |
+| `modules`, `module_count` | the release's module classifiers |
+| `package_name`, `package_version`, `package_bin`, `dependencies` | from `package.json` |
+
+`python3 .github/scripts/generate-readme.py --repository owner/name --offline --placeholders`
+prints the whole table with the current repository's values in it.
+
+The generator's own tests run offline, with no network and no third-party package:
+`python3 -m unittest discover -s .github/scripts -t .github/scripts`.
+
 ## Branch names
 
 A caller's own `on: push: branches:` trigger is the only place a branch name may be written
