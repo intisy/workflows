@@ -1,0 +1,15 @@
+name: Promote to Main
+
+on:
+  push:
+    tags:
+      - "v*"
+permissions:
+  contents: write
+jobs:
+  merge:
+    uses: intisy/workflows/.github/workflows/merge.yml@main
+    with:
+      source: experimental
+      target: main
+      sync_back: true

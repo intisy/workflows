@@ -1,0 +1,85 @@
+name: Merge
+
+on:
+  workflow_call:
+    inputs:
+      source:
+        description: 'Branch merged from'
+        required: true
+        type: string
+      target:
+        description: 'Branch merged into'
+        required: true
+        type: string
+      mode:
+        description: 'merge for a normal merge, overwrite to take the source tree wholesale'
+        required: false
+        type: string
+        default: 'merge'
+      sync_back:
+        description: 'Bring the target back onto the source afterwards, so the source never falls behind'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge the source into the target
+        env:
+          SOURCE: ${{ inputs.source }}
+          TARGET: ${{ inputs.target }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          case "$MODE" in
+            merge|overwrite) ;;
+            *) echo "::error::mode must be merge or overwrite, got '$MODE'"; exit 1 ;;
+          esac
+          git fetch --tags origin
+          if git rev-parse --verify --quiet "origin/$SOURCE" >/dev/null; then
+            source_ref="origin/$SOURCE"
+          else
+            source_ref="$SOURCE"
+          fi
+          if git ls-remote --exit-code --heads origin "$TARGET" >/dev/null 2>&1; then
+            git checkout "$TARGET"
+          else
+            git checkout -b "$TARGET" "$source_ref"
+          fi
+          if git merge --ff-only "$source_ref"; then
+            echo "Fast-forwarded $TARGET to $SOURCE."
+          elif [ "$MODE" = overwrite ]; then
+            git merge -s ours --no-commit --allow-unrelated-histories "$source_ref"
+            git read-tree --reset -u "$source_ref"
+            git commit --no-edit -m "chore: merge $SOURCE into $TARGET"
+          else
+            git merge --no-edit "$source_ref"
+          fi
+          git push origin "$TARGET"
+
+      - name: Sync the target back onto the source
+        if: ${{ inputs.sync_back }}
+        env:
+          SOURCE: ${{ inputs.source }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          if ! git ls-remote --exit-code --heads origin "$SOURCE" >/dev/null 2>&1; then
+            echo "No $SOURCE branch to sync back to."
+            exit 0
+          fi
+          git checkout "$SOURCE"
+          git merge --ff-only "$TARGET" || git merge --no-edit "$TARGET"
+          git push origin "$SOURCE"
