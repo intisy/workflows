@@ -13,7 +13,7 @@ on:
         type: string
         default: '8'
       jdk_distribution:
-        description: 'liberica-full installs BellSoft Liberica Full (bundled JavaFX) from bell-sw.com; any other value is handed to actions/setup-java'
+        description: 'liberica-full installs BellSoft Liberica Full (bundled JavaFX) from bell-sw.com; none leaves the runner default JDK in place; any other value is handed to actions/setup-java'
         required: false
         type: string
         default: 'liberica-full'
@@ -22,12 +22,93 @@ on:
         required: false
         type: string
         default: '8u372+7'
+      build_task:
+        description: 'Gradle task the build job runs; ignored while publish_task is set'
+        required: false
+        type: string
+        default: 'build'
+      publish_task:
+        description: 'Gradle task that builds and releases in one go; while set it replaces both the build task and the release step'
+        required: false
+        type: string
+        default: ''
+      release_assets:
+        description: 'Glob of the files uploaded to the release'
+        required: false
+        type: string
+        default: 'build/libs/*'
+      generate_release_notes:
+        description: 'Let GitHub write the release notes from the commits since the previous tag'
+        required: false
+        type: boolean
+        default: false
+      test_task:
+        description: 'Gradle task the test job runs; no test job runs while this is empty'
+        required: false
+        type: string
+        default: ''
+      pre_test_task:
+        description: 'Gradle task run before test_task, for fixtures the tests need installed'
+        required: false
+        type: string
+        default: ''
+      test_runners:
+        description: 'JSON array of the runner labels the test job fans out over'
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      test_java_version:
+        description: 'Java version handed to actions/setup-java in the test job'
+        required: false
+        type: string
+        default: '8'
+      test_jdk_distribution:
+        description: 'Distribution handed to actions/setup-java in the test job'
+        required: false
+        type: string
+        default: 'temurin'
     secrets:
       envPAT:
         required: true
 
 jobs:
+  test:
+    if: ${{ inputs.test_task != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.test_runners) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.test_java_version }}
+          distribution: ${{ inputs.test_jdk_distribution }}
+
+      - name: Grant execute permission for gradlew
+        if: runner.os != 'Windows'
+        run: chmod +x gradlew
+
+      - name: Run the pre-test task with Gradle Wrapper
+        if: ${{ inputs.pre_test_task != '' }}
+        shell: bash
+        run: ./gradlew ${{ inputs.pre_test_task }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Run tests with Gradle Wrapper
+        shell: bash
+        run: ./gradlew ${{ inputs.test_task }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   build-and-upload:
+    needs: test
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -45,7 +126,7 @@ jobs:
           echo "/opt/bellsoft-$dir/bin" >> $GITHUB_PATH
 
       - name: Setup Java
-        if: inputs.jdk_distribution != 'liberica-full'
+        if: inputs.jdk_distribution != 'liberica-full' && inputs.jdk_distribution != 'none'
         uses: actions/setup-java@v4
         with:
           java-version: ${{ inputs.java_version }}
@@ -61,9 +142,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run build with Gradle Wrapper
-        run: ./gradlew build -Partifact_version=${{ inputs.ref_name }}
+        if: ${{ inputs.publish_task == '' }}
+        run: ./gradlew ${{ inputs.build_task }} -Partifact_version=${{ inputs.ref_name }}
+
+      - name: Publish the release with Gradle Wrapper
+        if: ${{ inputs.publish_task != '' }}
+        run: ./gradlew ${{ inputs.publish_task }} -Partifact_version=${{ inputs.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.envPAT }}
 
       - name: Create release and upload the jars
+        if: ${{ inputs.publish_task == '' }}
+        env:
+          NOTES: ${{ inputs.generate_release_notes && '--generate-notes' || '' }}
         run: |
-          gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}"
-          gh release upload "${{ inputs.ref_name }}" build/libs/* --clobber
+          gh release create ${{ inputs.ref_name }} -t "Release ${{ inputs.ref_name }}" $NOTES
+          gh release upload "${{ inputs.ref_name }}" ${{ inputs.release_assets }} --clobber
