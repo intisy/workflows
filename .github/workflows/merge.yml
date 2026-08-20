@@ -59,7 +59,7 @@ jobs:
             merge|overwrite) ;;
             *) echo "::error::mode must be merge or overwrite, got '$MODE'"; exit 1 ;;
           esac
-          git fetch --tags origin
+          git fetch --force --tags origin
           if git rev-parse --verify --quiet "origin/$SOURCE" >/dev/null; then
             source_ref="origin/$SOURCE"
           else
