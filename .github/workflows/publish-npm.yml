@@ -7,6 +7,11 @@ on:
         description: 'The package name published to npm'
         required: true
         type: string
+      tag:
+        description: 'Release tag the version is taken from; empty takes the ref the run was started from'
+        required: false
+        type: string
+        default: ''
       scope:
         description: 'npm scope to also publish under, without the leading @; empty skips the scoped publish'
         required: false
@@ -52,11 +57,19 @@ jobs:
           echo "::error::scoped_only needs a scope, otherwise nothing is published."
           exit 1
 
+      - name: Resolve the release tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
       - name: Guard against runaway patch versions
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
-          PATCH="${GITHUB_REF_NAME##*.}"
+          PATCH="${TAG##*.}"
           if [ "${PATCH:-0}" -ge ${{ inputs.patch_ceiling }} ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} has patch >= ${{ inputs.patch_ceiling }}, bump the minor version (reset patch) instead of more patches."
+            echo "::error::Tag ${TAG} has patch >= ${{ inputs.patch_ceiling }}, bump the minor version (reset patch) instead of more patches."
             exit 1
           fi
 
@@ -125,8 +138,10 @@ jobs:
           NODE
 
       - name: Set version from tag
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           npm version "$VERSION" --allow-same-version --no-git-tag-version
 
       - name: Publish unscoped
@@ -151,7 +166,7 @@ jobs:
       - name: Publish jar
         if: ${{ inputs.jar_module != '' }}
         working-directory: java
-        run: ./gradlew :${{ inputs.jar_module }}:jar :${{ inputs.jar_module }}:publishGithub -Partifact_version=${{ github.ref_name }} -x test -x compileTestJava
+        run: ./gradlew :${{ inputs.jar_module }}:jar :${{ inputs.jar_module }}:publishGithub -Partifact_version=${{ steps.tag.outputs.name }} -x test -x compileTestJava
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
