@@ -7,11 +7,6 @@ on:
         description: 'The tag prefix that releases to GitHub only, e.g. "gh-" (empty is the npm-publishing prefix)'
         required: true
         type: string
-      needs_packages:
-        description: 'Whether the caller must grant packages: read in its own permissions block (paired with needs_java)'
-        required: false
-        type: boolean
-        default: false
       patch_ceiling:
         description: 'The patch number at or above which a release tag is refused'
         required: true
@@ -21,21 +16,14 @@ on:
         required: false
         type: boolean
         default: false
-      default_branch:
-        description: >-
-          Not read by this workflow's own steps (none need a branch name today). Reserved so a
-          caller with a future branch-dependent step resolves it as
-          inputs.default_branch || github.event.repository.default_branch, never a literal.
-        required: false
-        type: string
-        default: ''
 
-# Static ceiling: permissions cannot reference inputs. A caller without needs_java narrows this to
-# contents: write alone in its own permissions block; a called workflow can only narrow what the
-# caller granted, never widen it.
-permissions:
-  contents: write
-  packages: read
+# No permissions block: a called workflow's GITHUB_TOKEN permissions can only be downgraded, never
+# elevated, from what the caller's job grants (GitHub Actions docs, "Reusing workflow configurations":
+# "The GITHUB_TOKEN permissions passed from the caller workflow can be only downgraded (not elevated)
+# by the called workflow"), and declaring none here means the caller's own grant (contents: write,
+# plus packages: read when needs_java) applies unchanged (Ken Muse, "GitHub Actions Workflow
+# Permissions": "If the reusable workflow does not declare any permissions, it will default to the
+# permissions provided by the job or workflow").
 
 jobs:
   release:
