@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      generated_paths:
+        description: 'Newline separated paths that are generated on the target and always resolve to the target version on conflict'
+        required: false
+        type: string
+        default: 'README.md'
     secrets:
       envPAT:
         description: 'Token the push is made with; falls back to the job token, which cannot push to a protected branch nor trigger downstream workflows'
@@ -48,6 +53,7 @@ jobs:
           SOURCE: ${{ inputs.source }}
           TARGET: ${{ inputs.target }}
           MODE: ${{ inputs.mode }}
+          GENERATED_PATHS: ${{ inputs.generated_paths }}
         run: |
           case "$MODE" in
             merge|overwrite) ;;
@@ -71,7 +77,19 @@ jobs:
             git read-tree --reset -u "$source_ref"
             git commit --no-edit -m "chore: merge $SOURCE into $TARGET"
           else
-            git merge --no-edit "$source_ref"
+            if ! git merge --no-edit "$source_ref"; then
+              echo "$GENERATED_PATHS" | while IFS= read -r generated; do
+                [ -n "$generated" ] || continue
+                git checkout --ours -- "$generated" 2>/dev/null && git add -- "$generated" || git rm -q --ignore-unmatch -- "$generated"
+              done
+              unresolved=$(git diff --name-only --diff-filter=U)
+              if [ -n "$unresolved" ]; then
+                echo "::error::merge of $SOURCE into $TARGET left conflicts outside the generated paths:"
+                echo "$unresolved"
+                exit 1
+              fi
+              git commit --no-edit
+            fi
           fi
           git push origin "$TARGET"
 
