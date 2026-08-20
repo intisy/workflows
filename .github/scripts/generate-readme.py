@@ -102,6 +102,11 @@ KINDS = {
             "content_intro": "Once you have it installed you can use it like so:",
         },
     ),
+    "workflows": Kind(
+        sections=["title", "description", "content", "license-badge"],
+        title_source="repo",
+        defaults={"license_default": "Apache License 2.0"},
+    ),
 }
 
 
@@ -347,6 +352,8 @@ def render_releases(ctx):
 
 
 def render_about(ctx):
+    if not ctx.description:
+        return None
     return "## What is %s?\n\n%s" % (ctx.repo, ctx.description)
 
 
