@@ -1,0 +1,165 @@
+name: Publish to npm
+
+on:
+  workflow_call:
+    inputs:
+      unscoped_name:
+        description: 'The package name published to npm'
+        required: true
+        type: string
+      scoped_only:
+        description: 'Publish only under @intisy-ai/<unscoped_name>; the unscoped name is unavailable on npm'
+        required: false
+        type: boolean
+        default: false
+      contents_permission:
+        description: >-
+          "read" or "write": what the caller must grant contents: in its own permissions block.
+          This workflow cannot set it (permissions do not accept expressions); it is documentation
+          for the caller, which computes the literal from whether it also passes jar_module.
+        required: false
+        type: string
+        default: read
+      needs_packages:
+        description: 'Whether the caller must grant packages: read in its own permissions block (paired with needs_java)'
+        required: false
+        type: boolean
+        default: false
+      patch_ceiling:
+        description: 'The patch number at or above which a release tag is refused'
+        required: true
+        type: number
+      needs_java:
+        description: 'Whether the build needs a JDK (a TeaVM provider/translator resolving ai-java from GitHub Packages)'
+        required: false
+        type: boolean
+        default: false
+      jar_module:
+        description: 'Gradle module to jar-publish, e.g. "antigravity-provider" (no leading colon); empty to skip'
+        required: false
+        type: string
+        default: ''
+      jar_pretest_task:
+        description: 'Gradle task to run before the jar publish, e.g. "claude-code-proxy-plugin:test"; empty to skip'
+        required: false
+        type: string
+        default: ''
+      default_branch:
+        description: >-
+          Not read by this workflow's own steps (none need a branch name today). Reserved so a
+          caller with a future branch-dependent step resolves it as
+          inputs.default_branch || github.event.repository.default_branch, never a literal.
+        required: false
+        type: string
+        default: ''
+
+# Static ceiling: permissions cannot reference inputs. Each caller narrows this to what it actually
+# needs (contents: read unless it jar-publishes, packages: read only when needs_java) in its own
+# permissions block; a called workflow can only narrow what the caller granted, never widen it.
+permissions:
+  id-token: write
+  contents: write
+  packages: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard against runaway patch versions
+        run: |
+          PATCH="${GITHUB_REF_NAME##*.}"
+          if [ "${PATCH:-0}" -ge ${{ inputs.patch_ceiling }} ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} has patch >= ${{ inputs.patch_ceiling }}, bump the minor version (reset patch) instead of more patches."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Tokenless trusted publishing (OIDC) needs a recent npm.
+      - run: npm install -g npm@latest
+
+      - uses: actions/setup-java@v4
+        if: ${{ inputs.needs_java }}
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - run: npm install
+
+      - name: Build
+        if: ${{ inputs.needs_java }}
+        run: npm run build
+        env:
+          # The Gradle build resolves io.github.intisy:ai-java from GitHub Packages Maven
+          # (intisy-ai/ai-java). GitHub Packages needs a token even for public packages;
+          # ai-java's package is public, so the job's github.token (packages: read) reads it.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build
+        if: ${{ !inputs.needs_java }}
+        run: npm run build
+
+      - run: git diff --exit-code -- README.md
+      - run: npx vitest run
+
+      # A shared library is compiled from its submodule, which package.json declares as a
+      # file: dependency. That cannot resolve from a published tarball, so each one is
+      # pinned to the version the submodule actually carries: an npm consumer then installs
+      # a library at least as new as the one this artifact was compiled against. A repo with
+      # no file: dependency is untouched.
+      - name: Pin file dependencies to published versions
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const deps = pkg.dependencies || {};
+          let changed = 0;
+          for (const [name, spec] of Object.entries(deps)) {
+            if (!String(spec).startsWith("file:")) continue;
+            const { version } = JSON.parse(fs.readFileSync(String(spec).slice(5) + "/package.json", "utf8"));
+            if (!version) throw new Error(name + " declares no version to pin");
+            deps[name] = "^" + version;
+            changed++;
+            console.log(name + " -> ^" + version);
+          }
+          if (changed) fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          NODE
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --allow-same-version --no-git-tag-version
+
+      - name: Publish unscoped
+        if: ${{ !inputs.scoped_only }}
+        run: npm publish --access public
+
+      - name: Publish scoped
+        run: |
+          npm pkg set name="@intisy-ai/${{ inputs.unscoped_name }}"
+          npm publish --access public
+
+      - run: chmod +x java/gradlew
+        if: ${{ inputs.jar_module != '' }}
+
+      - name: Run the jar's pretest task
+        if: ${{ inputs.jar_module != '' && inputs.jar_pretest_task != '' }}
+        working-directory: java
+        run: ./gradlew :${{ inputs.jar_pretest_task }}
+
+      - name: Publish jar
+        if: ${{ inputs.jar_module != '' }}
+        working-directory: java
+        run: ./gradlew :${{ inputs.jar_module }}:jar :${{ inputs.jar_module }}:publishGithub -Partifact_version=${{ github.ref_name }} -x test -x compileTestJava
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}

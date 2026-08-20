@@ -1,0 +1,98 @@
+name: GitHub pre-release
+
+on:
+  workflow_call:
+    inputs:
+      tag_prefix:
+        description: 'The tag prefix that releases to GitHub only, e.g. "gh-" (empty is the npm-publishing prefix)'
+        required: true
+        type: string
+      needs_packages:
+        description: 'Whether the caller must grant packages: read in its own permissions block (paired with needs_java)'
+        required: false
+        type: boolean
+        default: false
+      patch_ceiling:
+        description: 'The patch number at or above which a release tag is refused'
+        required: true
+        type: number
+      needs_java:
+        description: 'Whether the build needs a JDK (a TeaVM provider/translator resolving ai-java from GitHub Packages)'
+        required: false
+        type: boolean
+        default: false
+      default_branch:
+        description: >-
+          Not read by this workflow's own steps (none need a branch name today). Reserved so a
+          caller with a future branch-dependent step resolves it as
+          inputs.default_branch || github.event.repository.default_branch, never a literal.
+        required: false
+        type: string
+        default: ''
+
+# Static ceiling: permissions cannot reference inputs. A caller without needs_java narrows this to
+# contents: write alone in its own permissions block; a called workflow can only narrow what the
+# caller granted, never widen it.
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard against runaway patch versions
+        run: |
+          PATCH="${GITHUB_REF_NAME##*.}"
+          if [ "${PATCH:-0}" -ge ${{ inputs.patch_ceiling }} ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} has patch >= ${{ inputs.patch_ceiling }}, bump the minor version (reset patch) instead of more patches."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-java@v4
+        if: ${{ inputs.needs_java }}
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - run: npm install
+
+      - name: Build
+        if: ${{ inputs.needs_java }}
+        run: npm run build
+        env:
+          # The Gradle build resolves io.github.intisy:ai-java from GitHub Packages Maven
+          # (intisy-ai/ai-java). GitHub Packages needs a token even for public packages;
+          # ai-java's package is public, so the job's github.token (packages: read) reads it.
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build
+        if: ${{ !inputs.needs_java }}
+        run: npm run build
+
+      - run: git diff --exit-code -- README.md
+      - run: npx vitest run
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#${{ inputs.tag_prefix }}v}"
+          npm version "$VERSION" --allow-same-version --no-git-tag-version
+
+      # The directory is created first: --pack-destination does not create it, and npm fails with
+      # ENOENT on the tarball it was about to write.
+      - run: mkdir -p release-asset && npm pack --pack-destination release-asset
+
+      - name: Create the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-asset/*.tgz --prerelease --title "$GITHUB_REF_NAME" --generate-notes
