@@ -26,10 +26,10 @@ More caller templates live in [`.examples`](.examples).
 A caller's own `on: push: branches:` trigger is the only place a branch name may be written
 literally, because a reusable workflow cannot parameterise its own trigger.
 
-Everywhere else, a reusable workflow takes the branch as an input: `default_branch` and
-`dev_branch`, each defaulting to `${{ github.event.repository.default_branch }}`. So no workflow in
-this repository contains `main`, `master`, `stable`, `development` or `experimental` as a literal,
-and `npm-dual-publish`'s `workflow check` fails when one appears.
+Everywhere else, a reusable workflow takes the branch as an input: `default_branch` for the branch
+it works on, `source` and `target` for the two ends of a merge. So no reusable workflow here
+contains `main`, `master`, `stable`, `development` or `experimental` as a literal, and
+`npm-dual-publish`'s `workflow check` fails when one appears.
 
 ## Pinning a ref
 

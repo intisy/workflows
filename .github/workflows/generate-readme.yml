@@ -1,9 +1,11 @@
 name: Generate README
+
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
 jobs:
   readme:
     permissions:

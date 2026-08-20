@@ -1,4 +1,5 @@
-name: Package
+name: Publish Plugin
+
 on:
   push:
     tags:

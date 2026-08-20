@@ -7,8 +7,13 @@ on:
         description: 'The package name published to npm'
         required: true
         type: string
+      scope:
+        description: 'npm scope to also publish under, without the leading @; empty skips the scoped publish'
+        required: false
+        type: string
+        default: ''
       scoped_only:
-        description: 'Publish only under @intisy-ai/<unscoped_name>; the unscoped name is unavailable on npm'
+        description: 'Publish only under the scope; the unscoped name is unavailable on npm'
         required: false
         type: boolean
         default: false
@@ -17,7 +22,7 @@ on:
         required: true
         type: number
       needs_java:
-        description: 'Whether the build needs a JDK (a TeaVM provider/translator resolving ai-java from GitHub Packages)'
+        description: 'Whether the build needs a JDK'
         required: false
         type: boolean
         default: false
@@ -32,15 +37,8 @@ on:
         type: string
         default: ''
 
-# A called workflow's GITHUB_TOKEN permissions can only be downgraded, never elevated, from what the
-# caller's job grants (GitHub Actions docs, "Reusing workflow configurations": "The GITHUB_TOKEN
-# permissions passed from the caller workflow can be only downgraded (not elevated) by the called
-# workflow"), and a workflow that declares no permissions block receives exactly what the caller
-# granted (Ken Muse, "GitHub Actions Workflow Permissions": "If the reusable workflow does not
-# declare any permissions, it will default to the permissions provided by the job or workflow").
-# contents/packages vary per caller (a jar-publishing repo needs contents: write + packages: read,
-# others need less), so only id-token: write, which every caller grants without exception, is
-# declared here; contents/packages are each caller's alone to grant.
+# A called workflow can only downgrade the caller's GITHUB_TOKEN grant, so contents/packages are each
+# caller's alone to declare; only id-token, which every caller grants, is safe to pin here.
 permissions:
   id-token: write
 
@@ -48,6 +46,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Guard against a publish that would produce nothing
+        if: ${{ inputs.scoped_only && inputs.scope == '' }}
+        run: |
+          echo "::error::scoped_only needs a scope, otherwise nothing is published."
+          exit 1
+
       - name: Guard against runaway patch versions
         run: |
           PATCH="${GITHUB_REF_NAME##*.}"
@@ -56,33 +60,35 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # Tokenless trusted publishing (OIDC) needs a recent npm.
-      - run: npm install -g npm@latest
+      - name: Update npm
+        run: npm install -g npm@latest
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
         if: ${{ inputs.needs_java }}
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - run: npm install
+      - name: Install dependencies
+        run: npm install
 
-      - name: Build
+      - name: Build with a JDK
         if: ${{ inputs.needs_java }}
         run: npm run build
         env:
-          # The Gradle build resolves io.github.intisy:ai-java from GitHub Packages Maven
-          # (intisy-ai/ai-java). GitHub Packages needs a token even for public packages;
-          # ai-java's package is public, so the job's github.token (packages: read) reads it.
+          # GitHub Packages Maven demands a token even for a public package.
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
@@ -91,14 +97,15 @@ jobs:
         if: ${{ !inputs.needs_java }}
         run: npm run build
 
-      - run: git diff --exit-code -- README.md
-      - run: npx vitest run
+      - name: Check the README is up to date
+        run: git diff --exit-code -- README.md
 
-      # A shared library is compiled from its submodule, which package.json declares as a
-      # file: dependency. That cannot resolve from a published tarball, so each one is
-      # pinned to the version the submodule actually carries: an npm consumer then installs
-      # a library at least as new as the one this artifact was compiled against. A repo with
-      # no file: dependency is untouched.
+      - name: Run tests
+        run: npx vitest run
+
+      # A file: dependency cannot resolve from a published tarball, so each one is pinned to the
+      # version its submodule carries: an npm consumer then installs a library at least as new as
+      # the one this artifact was compiled against.
       - name: Pin file dependencies to published versions
         run: |
           node <<'NODE'
@@ -127,12 +134,14 @@ jobs:
         run: npm publish --access public
 
       - name: Publish scoped
+        if: ${{ inputs.scope != '' }}
         run: |
-          npm pkg set name="@intisy-ai/${{ inputs.unscoped_name }}"
+          npm pkg set name="@${{ inputs.scope }}/${{ inputs.unscoped_name }}"
           npm publish --access public
 
-      - run: chmod +x java/gradlew
+      - name: Grant execute permission for gradlew
         if: ${{ inputs.jar_module != '' }}
+        run: chmod +x java/gradlew
 
       - name: Run the jar's pretest task
         if: ${{ inputs.jar_module != '' && inputs.jar_pretest_task != '' }}
