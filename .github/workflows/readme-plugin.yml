@@ -1,0 +1,113 @@
+name: Update Dependency README
+on:
+  workflow_call:
+    inputs:
+      repository:
+        description: 'repository'
+        required: true
+        type: string
+      actor:
+        description: 'actor'
+        required: true
+        type: string
+    secrets:
+      envPAT:
+        required: true
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          latest_tag=$(curl -s -H "Authorization: token ${{ secrets.envPAT }}" https://api.github.com/repos/${{ inputs.repository }}/tags | jq -r '.[].name' | grep -E '^[0-9]+(\.[0-9]+)*$' | sort -V | tail -n1)
+          echo "Latest tag: $latest_tag"
+          echo "::set-output name=tag::$latest_tag"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+
+      - name: Update README
+        id: update_readme
+        run: |
+          git pull origin main
+          example=$(grep "^example=" "github.properties" | cut -d'=' -f2-)
+          guide=$(grep "^guide=" "github.properties" | cut -d'=' -f2- || true)
+          repo=$(echo "${{ inputs.repository }}" | cut -d'/' -f2)
+          IFS='|' read -ra lines <<< "$example"
+
+          # Render an optional Guide section only when github.properties defines guide=.
+          # Repositories without that key produce a byte-identical README (no Guide section).
+          : > guide_section.md
+          if [ -n "$guide" ]; then
+            IFS='|' read -ra guide_lines <<< "$guide"
+            {
+              echo ""
+              echo "## Guide"
+              echo ""
+              for line in "${guide_lines[@]}"; do echo "$line"; done
+            } > guide_section.md
+          fi
+          cat <<EOF > README.md
+          # $(grep "^display_name=" "gradle.properties" | cut -d'=' -f2-)
+          
+          Archives containing JAR files are available as [releases](https://github.com/${{ inputs.repository }}/releases).
+          
+          ## What is $repo?
+          
+          $(grep "^description=" "github.properties" | cut -d'=' -f2-)
+          
+          ## Usage
+          
+          Using the plugins DSL:
+          
+          \`\`\`groovy
+          plugins {
+              id "io.github.${{ inputs.actor }}.$repo" version "${{ steps.get_latest_tag.outputs.tag }}"
+          }
+          \`\`\`
+          
+          Using legacy plugin application:
+          
+          \`\`\`groovy
+          buildscript {
+              repositories {
+                  maven {
+                      url "https://plugins.gradle.org/m2/"
+                  }
+              }
+              dependencies {
+                  classpath "io.github.${{ inputs.actor }}.$repo:${{ steps.get_latest_tag.outputs.tag }}"
+              }
+          }
+          
+          apply plugin: "io.github.${{ inputs.actor }}.$repo"
+          \`\`\`
+          
+          Once you have the plugin installed you can use it like so:
+
+          $(for line in "${lines[@]}"; do echo "$line"; done; cat guide_section.md)
+
+          ## License
+
+          [![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+          EOF
+          rm -f guide_section.md
+
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: 'Auto-update README'
+          add: 'README.md'
+          new_branch: main
+          committer_name: github-actions[bot]
+          committer_email: github-actions[bot]@users.noreply.github.com
