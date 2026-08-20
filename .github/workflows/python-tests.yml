@@ -1,0 +1,30 @@
+name: Python Tests
+
+on:
+  workflow_call:
+    inputs:
+      test_path:
+        description: 'Directory unittest discovers the tests in'
+        required: false
+        type: string
+        default: '.github/scripts'
+      python_version:
+        description: 'Python version the tests run on'
+        required: false
+        type: string
+        default: '3.x'
+
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Run unittest
+        run: python3 -m unittest discover -s "${{ inputs.test_path }}" -t "${{ inputs.test_path }}" -v
