@@ -1,3 +1,3 @@
-kind: workflows
+kind: generic
 title: Workflows
 description: Reusable GitHub Actions workflows shared by every repository in the intisy, intisy-ai and Slimefun5 fleets.

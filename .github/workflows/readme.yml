@@ -86,6 +86,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
           README_TAG: ${{ inputs.tag }}
+          README_DEFAULT_BRANCH: ${{ inputs.default_branch }}
         run: |
           python3 .readme-generator/.github/scripts/generate-readme.py --repository "${{ inputs.repository }}"
           rm -rf .readme-generator
