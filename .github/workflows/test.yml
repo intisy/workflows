@@ -64,6 +64,7 @@ on:
         type: string
         default: ''
       gradle_test:
+        description: 'Gradle task the test step runs; empty skips it while still setting up a JDK'
         required: false
         type: string
         default: 'test'
@@ -73,6 +74,7 @@ on:
         type: string
         default: ''
       maven_test:
+        description: 'Maven goal the test step runs; empty skips it while still setting up a JDK'
         required: false
         type: string
         default: 'test'
@@ -249,7 +251,7 @@ jobs:
           GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
       - name: Test with gradle
-        if: ${{ steps.detect.outputs.gradle != '' }}
+        if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_test != '' }}
         shell: bash
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
@@ -259,7 +261,7 @@ jobs:
           GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
       - name: Test with maven
-        if: ${{ steps.detect.outputs.maven != '' }}
+        if: ${{ steps.detect.outputs.maven != '' && inputs.maven_test != '' }}
         shell: bash
         run: mvn --batch-mode ${{ inputs.maven_test }}
         env:

@@ -37,6 +37,11 @@ on:
         required: false
         type: number
         default: 60
+      runner:
+        description: 'Runner label the publish job runs on'
+        required: false
+        type: string
+        default: 'ubuntu-latest'
       node_version:
         required: false
         type: string
@@ -87,6 +92,21 @@ on:
         required: false
         type: string
         default: 'all'
+      post_build:
+        description: 'Command run after every build step and before any publish step; empty skips it'
+        required: false
+        type: string
+        default: ''
+      allow_untagged:
+        description: 'Publish a ref that is not a tag; only for a repository that versions by run number'
+        required: false
+        type: boolean
+        default: false
+      release_notes_from_commit:
+        description: 'Take the release body from the tagged commit message instead of generated notes'
+        required: false
+        type: boolean
+        default: false
       publish_task:
         description: 'Gradle task that builds and releases in one go; while set it replaces the gradle build and the jar publish'
         required: false
@@ -155,7 +175,7 @@ on:
 
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - name: Guard against a publish that would produce nothing
@@ -190,6 +210,7 @@ jobs:
           token: ${{ secrets.envPAT || github.token }}
 
       - name: Guard against publishing a non-tag ref
+        if: ${{ !inputs.allow_untagged }}
         env:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
@@ -307,6 +328,16 @@ jobs:
         if: ${{ steps.detect.outputs.make != '' && inputs.make_build != '' }}
         run: make ${{ inputs.make_build }}
 
+      # No shell key: the command must run under the runner's default shell so a windows caller
+      # gets PowerShell.
+      - name: Run the post-build command
+        if: ${{ inputs.post_build != '' }}
+        run: ${{ inputs.post_build }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
       - name: Check the README is up to date
         if: ${{ inputs.require_clean_readme }}
         run: git diff --exit-code -- README.md
@@ -330,8 +361,10 @@ jobs:
           if (changed) fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
           NODE
 
+      # Gated on node rather than on the npm target: a GitHub-only pre-release publishes no package
+      # but still packs a tarball, which must carry the tag's version rather than the committed one.
       - name: Set the npm version from the tag
-        if: ${{ steps.detect.outputs.npm != '' }}
+        if: ${{ steps.detect.outputs.node != '' }}
         env:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
@@ -416,6 +449,16 @@ jobs:
         # npm pack does not create the destination and fails with ENOENT on the tarball it writes.
         run: mkdir -p release-asset && npm pack --pack-destination release-asset
 
+      - name: Take the release notes from the tagged commit
+        id: commit_notes
+        if: ${{ inputs.release_notes_from_commit && inputs.release_assets != '' }}
+        run: |
+          {
+            echo 'text<<NOTES_EOF'
+            git log -1 --pretty=%B
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create the GitHub release
         if: ${{ inputs.release_assets != '' }}
         env:
@@ -423,6 +466,13 @@ jobs:
           TAG: ${{ steps.tag.outputs.name }}
           NOTES: ${{ inputs.generate_release_notes && '--generate-notes' || '' }}
           PRE: ${{ inputs.prerelease && '--prerelease' || '' }}
+          BODY: ${{ steps.commit_notes.outputs.text }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" $NOTES $PRE
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            :
+          elif [ -n "$BODY" ]; then
+            gh release create "$TAG" --title "$TAG" --notes "$BODY" $PRE
+          else
+            gh release create "$TAG" --title "$TAG" $NOTES $PRE
+          fi
           gh release upload "$TAG" ${{ inputs.release_assets }} --clobber
