@@ -4,12 +4,12 @@ on:
   workflow_call:
     inputs:
       targets:
-        description: 'Space separated publish-target list that replaces detection entirely; also the retry mechanism, since a half-failed run is re-run with targets narrowed to what did not publish'
+        description: 'Space separated publish-target list that replaces detection entirely; also the retry mechanism, since a half-failed run is re-run with targets narrowed to what did not publish; the literal none means explicitly nothing'
         required: false
         type: string
         default: ''
       toolchains:
-        description: 'Space separated toolchain list that replaces detection entirely'
+        description: 'Space separated toolchain list that replaces detection entirely; the literal none means explicitly nothing'
         required: false
         type: string
         default: ''
@@ -83,9 +83,10 @@ on:
         type: string
         default: '--build build'
       make_build:
+        description: 'Empty skips the make build; set it empty only for a project with no default target'
         required: false
         type: string
-        default: ''
+        default: 'all'
       publish_task:
         description: 'Gradle task that builds and releases in one go; while set it replaces the gradle build and the jar publish'
         required: false
@@ -124,6 +125,11 @@ on:
         required: false
         type: boolean
         default: false
+      npm_pack:
+        description: 'Pack the npm tarball into release-asset/ so a release can carry it'
+        required: false
+        type: boolean
+        default: false
       jar_module:
         description: 'Whitespace separated gradle modules to jar-publish, without leading colons'
         required: false
@@ -153,9 +159,9 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - name: Guard against a publish that would produce nothing
-        if: ${{ inputs.scoped_only && inputs.scope == '' }}
+        if: ${{ (inputs.scoped_only && inputs.scope == '') || (inputs.scope != '' && inputs.unscoped_name == '') }}
         run: |
-          echo "::error::scoped_only needs a scope, otherwise nothing is published."
+          echo "::error::scoped_only needs a scope, and a scope needs unscoped_name, otherwise nothing or a malformed name is published."
           exit 1
 
       - name: Resolve the release tag
@@ -183,6 +189,15 @@ jobs:
           submodules: ${{ inputs.submodules }}
           token: ${{ secrets.envPAT || github.token }}
 
+      - name: Guard against publishing a non-tag ref
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::$TAG is not a tag in this repository, so publishing it would ship an artifact versioned after a branch. Pass the tag input explicitly."
+            exit 1
+          fi
+
       - name: Detect toolchains and targets
         id: detect
         uses: intisy/workflows/.github/actions/detect-toolchains@main
@@ -194,6 +209,12 @@ jobs:
         if: ${{ steps.detect.outputs.targets == '' && inputs.release_assets == '' && inputs.publish_task == '' }}
         run: |
           echo "::error::No publish target was detected or set, no release_assets glob was given, and no publish_task was set, so this run would publish nothing. Set targets, release_assets, or publish_task."
+          exit 1
+
+      - name: Guard against a configured target that was not detected
+        if: ${{ inputs.jar_module != '' && steps.detect.outputs.github-gradle == '' && inputs.publish_task == '' }}
+        run: |
+          echo "::error::jar_module is set but no github-gradle publish target was detected, so no jar would be published. Check the build script names publishGithub, or set targets explicitly."
           exit 1
 
       - name: Guard against a plugin-portal publish with no credentials
@@ -389,6 +410,11 @@ jobs:
           GRADLE_PUBLISH_KEY: ${{ secrets.envKEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.envSECRET }}
         run: ./gradlew publishPlugins ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
+
+      - name: Pack the npm tarball
+        if: ${{ inputs.npm_pack && steps.detect.outputs.node != '' }}
+        # npm pack does not create the destination and fails with ENOENT on the tarball it writes.
+        run: mkdir -p release-asset && npm pack --pack-destination release-asset
 
       - name: Create the GitHub release
         if: ${{ inputs.release_assets != '' }}
