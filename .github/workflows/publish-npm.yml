@@ -154,13 +154,25 @@ jobs:
           npm pkg set name="@${{ inputs.scope }}/${{ inputs.unscoped_name }}"
           npm publish --access public
 
+      # The gradle root is the repository root once a repo's java has moved out of java/, so it is
+      # detected rather than named: both layouts exist while the migration runs.
+      - name: Locate the gradle root
+        if: ${{ inputs.jar_module != '' }}
+        id: gradle_root
+        run: |
+          if [ -f settings.gradle ] || [ -f settings.gradle.kts ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=java" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Grant execute permission for gradlew
         if: ${{ inputs.jar_module != '' }}
-        run: chmod +x java/gradlew
+        run: chmod +x ${{ steps.gradle_root.outputs.dir }}/gradlew
 
       - name: Run the jar's pretest task
         if: ${{ inputs.jar_module != '' && inputs.jar_pretest_task != '' }}
-        working-directory: java
+        working-directory: ${{ steps.gradle_root.outputs.dir }}
         run: ./gradlew :${{ inputs.jar_pretest_task }}
 
       # One gradle invocation over every module, so a multi-module release uploads its assets to the
@@ -168,7 +180,7 @@ jobs:
       # one-element list, so an existing caller passing one name is unaffected.
       - name: Publish jars
         if: ${{ inputs.jar_module != '' }}
-        working-directory: java
+        working-directory: ${{ steps.gradle_root.outputs.dir }}
         env:
           JAR_MODULES: ${{ inputs.jar_module }}
           GITHUB_TOKEN: ${{ github.token }}
