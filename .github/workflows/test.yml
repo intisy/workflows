@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       toolchains:
-        description: 'Space separated toolchain list that replaces detection entirely'
+        description: 'Space separated toolchain list that replaces detection entirely; the literal none means explicitly nothing'
         required: false
         type: string
         default: ''
