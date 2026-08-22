@@ -22,13 +22,17 @@ on:
         type: boolean
         default: false
       generated_paths:
-        description: 'Newline separated paths that are generated on the target and always resolve to the target version on conflict'
+        description: 'Newline separated file paths that always resolve to whichever branch is being merged into'
         required: false
         type: string
         default: 'README.md'
     secrets:
       envPAT:
-        description: 'Token the push is made with; falls back to the job token, which cannot push to a protected branch nor trigger downstream workflows'
+        description: >-
+          Token the push is made with; falls back to the job token, which cannot push to a protected
+          branch. Do NOT pass a PAT when the caller triggers on a push to a branch sync_back also
+          pushes to: the job token deliberately does not retrigger workflows, and a PAT does, which
+          loops.
         required: false
 
 jobs:
@@ -48,61 +52,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Merge the source into the target
-        env:
-          SOURCE: ${{ inputs.source }}
-          TARGET: ${{ inputs.target }}
-          MODE: ${{ inputs.mode }}
-          GENERATED_PATHS: ${{ inputs.generated_paths }}
-        run: |
-          case "$MODE" in
-            merge|overwrite) ;;
-            *) echo "::error::mode must be merge or overwrite, got '$MODE'"; exit 1 ;;
-          esac
-          git fetch --force --tags origin
-          if git rev-parse --verify --quiet "origin/$SOURCE" >/dev/null; then
-            source_ref="origin/$SOURCE"
-          else
-            source_ref="$SOURCE"
-          fi
-          if git ls-remote --exit-code --heads origin "$TARGET" >/dev/null 2>&1; then
-            git checkout "$TARGET"
-          else
-            git checkout -b "$TARGET" "$source_ref"
-          fi
-          if git merge --ff-only "$source_ref"; then
-            echo "Fast-forwarded $TARGET to $SOURCE."
-          elif [ "$MODE" = overwrite ]; then
-            git merge -s ours --no-commit --allow-unrelated-histories "$source_ref"
-            git read-tree --reset -u "$source_ref"
-            git commit --no-edit -m "chore: merge $SOURCE into $TARGET"
-          else
-            if ! git merge --no-edit "$source_ref"; then
-              echo "$GENERATED_PATHS" | while IFS= read -r generated; do
-                [ -n "$generated" ] || continue
-                git checkout --ours -- "$generated" 2>/dev/null && git add -- "$generated" || git rm -q --ignore-unmatch -- "$generated"
-              done
-              unresolved=$(git diff --name-only --diff-filter=U)
-              if [ -n "$unresolved" ]; then
-                echo "::error::merge of $SOURCE into $TARGET left conflicts outside the generated paths:"
-                echo "$unresolved"
-                exit 1
-              fi
-              git commit --no-edit
-            fi
-          fi
-          git push origin "$TARGET"
-
-      - name: Sync the target back onto the source
-        if: ${{ inputs.sync_back }}
-        env:
-          SOURCE: ${{ inputs.source }}
-          TARGET: ${{ inputs.target }}
-        run: |
-          if ! git ls-remote --exit-code --heads origin "$SOURCE" >/dev/null 2>&1; then
-            echo "No $SOURCE branch to sync back to."
-            exit 0
-          fi
-          git checkout "$SOURCE"
-          git merge --ff-only "$TARGET" || git merge --no-edit "$TARGET"
-          git push origin "$SOURCE"
+      - name: Merge
+        uses: intisy/workflows/.github/actions/merge-branches@main
+        with:
+          source: ${{ inputs.source }}
+          target: ${{ inputs.target }}
+          mode: ${{ inputs.mode }}
+          sync_back: ${{ inputs.sync_back }}
+          generated_paths: ${{ inputs.generated_paths }}
