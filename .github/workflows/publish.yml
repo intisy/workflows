@@ -375,10 +375,12 @@ jobs:
 
       - name: Deploy to a maven repository
         if: ${{ steps.detect.outputs.maven-target != '' && steps.detect.outputs.gradle == '' && steps.detect.outputs.maven != '' }}
-        run: mvn --batch-mode deploy -DskipTests -Drevision=${{ steps.tag.outputs.name }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+        run: |
+          mvn --batch-mode versions:set -DnewVersion=${{ steps.tag.outputs.name }} -DgenerateBackupPoms=false
+          mvn --batch-mode deploy -DskipTests
 
       - name: Publish to the Gradle plugin portal
         if: ${{ steps.detect.outputs.plugin-portal != '' }}
