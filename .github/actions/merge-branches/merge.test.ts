@@ -109,4 +109,16 @@ describe("merge-branches", () => {
 
     expect(() => run(work, { SOURCE: "development", TARGET: "main" })).toThrow();
   });
+
+  it("is a no-op in overwrite mode when the target already contains the source", () => {
+    const { work, remote } = fixture();
+
+    run(work, { SOURCE: "development", TARGET: "main", MODE: "overwrite" });
+
+    expect(git(work, "status", "--porcelain")).toBe("");
+    const clone = join(mkdtempSync(join(tmpdir(), "merge-verify-")), "clone");
+    git(".", "clone", "--branch", "main", remote, clone);
+    expect(git(clone, "show", "main:README.md")).toBe("generated");
+    expect(git(clone, "show", "main:source.txt")).toBe("two");
+  });
 });

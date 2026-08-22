@@ -54,7 +54,6 @@ merge_into() {
 
   if [ "$MODE" = overwrite ]; then
     git merge -s ours --no-commit --allow-unrelated-histories "$from"
-    git read-tree --reset -u "$from"
   else
     git merge --no-commit --no-ff "$from" || {
       git rev-parse -q --verify MERGE_HEAD >/dev/null || {
@@ -68,6 +67,12 @@ merge_into() {
     echo "already up to date: $onto contains $from"
     echo "::endgroup::"
     return
+  fi
+
+  # read-tree rewrites the working tree unconditionally, so it must not run for a merge that never
+  # started.
+  if [ "$MODE" = overwrite ]; then
+    git read-tree --reset -u "$from"
   fi
 
   restore_generated
