@@ -40,6 +40,7 @@ restore_generated() {
 merge_into() {
   from="$1"
   onto="$2"
+  mode="$3"
   echo "::group::merge $from into $onto"
 
   if ! git ls-remote --exit-code --heads origin "$onto" >/dev/null 2>&1; then
@@ -52,7 +53,7 @@ merge_into() {
 
   git checkout "$onto"
 
-  if [ "$MODE" = overwrite ]; then
+  if [ "$mode" = overwrite ]; then
     git merge -s ours --no-commit --allow-unrelated-histories "$from"
   else
     git merge --no-commit --no-ff "$from" || {
@@ -71,7 +72,7 @@ merge_into() {
 
   # read-tree rewrites the working tree unconditionally, so it must not run for a merge that never
   # started.
-  if [ "$MODE" = overwrite ]; then
+  if [ "$mode" = overwrite ]; then
     git read-tree --reset -u "$from"
   fi
 
@@ -90,11 +91,12 @@ merge_into() {
 }
 
 source_ref="$(resolve_ref "$SOURCE")"
-merge_into "$source_ref" "$TARGET"
+merge_into "$source_ref" "$TARGET" "$MODE"
 
 if [ "$SYNC_BACK" = true ]; then
   if git ls-remote --exit-code --heads origin "$SOURCE" >/dev/null 2>&1; then
-    merge_into "$(resolve_ref "$TARGET")" "$SOURCE"
+    # overwrite means make the target look like the source, so the reverse leg is always a plain merge.
+    merge_into "$(resolve_ref "$TARGET")" "$SOURCE" merge
   else
     echo "no $SOURCE branch to sync back to"
   fi
