@@ -163,6 +163,13 @@ jobs:
         with:
           override: ${{ inputs.toolchains }}
 
+      - name: Guard against a run that would test nothing
+        if: ${{ steps.detect.outputs.toolchains == '' }}
+        shell: bash
+        run: |
+          echo "::error::No build toolchain was detected and none was set, so this run would test nothing. Set the toolchains input, or check the repository's build markers."
+          exit 1
+
       - name: Setup Node.js
         if: ${{ steps.detect.outputs.node != '' }}
         uses: actions/setup-node@v4
