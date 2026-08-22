@@ -197,10 +197,15 @@ jobs:
           exit 1
 
       - name: Guard against a plugin-portal publish with no credentials
-        if: ${{ steps.detect.outputs.plugin-portal != '' && (secrets.envKEY == '' || secrets.envSECRET == '') }}
+        if: ${{ steps.detect.outputs.plugin-portal != '' }}
+        env:
+          KEY: ${{ secrets.envKEY }}
+          SECRET: ${{ secrets.envSECRET }}
         run: |
-          echo "::error::This repository publishes to the Gradle plugin portal but envKEY or envSECRET was not passed."
-          exit 1
+          if [ -z "$KEY" ] || [ -z "$SECRET" ]; then
+            echo "::error::This repository publishes to the Gradle plugin portal but envKEY or envSECRET was not passed."
+            exit 1
+          fi
 
       - name: Setup Node.js
         if: ${{ steps.detect.outputs.node != '' }}
