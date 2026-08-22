@@ -205,7 +205,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.tag.outputs.name }}
+          # An untagged caller versions by run number, which names no ref, so it checks out the ref
+          # the run was triggered from.
+          ref: ${{ inputs.allow_untagged && '' || steps.tag.outputs.name }}
           submodules: ${{ inputs.submodules }}
           token: ${{ secrets.envPAT || github.token }}
 
