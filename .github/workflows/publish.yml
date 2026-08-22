@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       targets:
-        description: 'Space separated publish-target list that replaces detection entirely'
+        description: 'Space separated publish-target list that replaces detection entirely; also the retry mechanism, since a half-failed run is re-run with targets narrowed to what did not publish'
         required: false
         type: string
         default: ''
@@ -190,6 +190,18 @@ jobs:
           override: ${{ inputs.toolchains }}
           targets: ${{ inputs.targets }}
 
+      - name: Guard against a run that would publish nothing
+        if: ${{ steps.detect.outputs.targets == '' && inputs.release_assets == '' && inputs.publish_task == '' }}
+        run: |
+          echo "::error::No publish target was detected or set, no release_assets glob was given, and no publish_task was set, so this run would publish nothing. Set targets, release_assets, or publish_task."
+          exit 1
+
+      - name: Guard against a plugin-portal publish with no credentials
+        if: ${{ steps.detect.outputs.plugin-portal != '' && (secrets.envKEY == '' || secrets.envSECRET == '') }}
+        run: |
+          echo "::error::This repository publishes to the Gradle plugin portal but envKEY or envSECRET was not passed."
+          exit 1
+
       - name: Setup Node.js
         if: ${{ steps.detect.outputs.node != '' }}
         uses: actions/setup-node@v4
@@ -252,6 +264,10 @@ jobs:
       - name: Build with maven
         if: ${{ steps.detect.outputs.maven != '' }}
         run: mvn --batch-mode ${{ inputs.maven_build }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
       - name: Configure with cmake
         if: ${{ steps.detect.outputs.cmake != '' }}
@@ -314,6 +330,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
           GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
+      - name: Guard against a github-gradle target with no modules
+        if: ${{ steps.detect.outputs.github-gradle != '' && inputs.jar_module == '' && inputs.publish_task == '' }}
+        run: |
+          echo "::error::This repository publishes through github-gradle but jar_module is empty, so no jar would be published. Set jar_module, or set targets to exclude github-gradle."
+          exit 1
+
       # One gradle invocation over every module, so a multi-module release uploads its assets to the
       # one release rather than racing several invocations to create it.
       - name: Publish jars through github-gradle
@@ -339,9 +361,16 @@ jobs:
           GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
       - name: Publish to a maven repository
-        if: ${{ steps.detect.outputs.maven-target != '' && inputs.publish_task == '' }}
+        if: ${{ steps.detect.outputs.maven-target != '' && steps.detect.outputs.gradle != '' }}
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew publish ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Deploy to a maven repository
+        if: ${{ steps.detect.outputs.maven-target != '' && steps.detect.outputs.gradle == '' && steps.detect.outputs.maven != '' }}
+        run: mvn --batch-mode deploy -DskipTests -Drevision=${{ steps.tag.outputs.name }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
@@ -349,11 +378,10 @@ jobs:
       - name: Publish to the Gradle plugin portal
         if: ${{ steps.detect.outputs.plugin-portal != '' }}
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
-        run: >-
-          ./gradlew publishPlugins ${{ inputs.gradle_args }}
-          -Pgradle.publish.key=${{ secrets.envKEY }}
-          -Pgradle.publish.secret=${{ secrets.envSECRET }}
-          -Partifact_version=${{ steps.tag.outputs.name }}
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.envKEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.envSECRET }}
+        run: ./gradlew publishPlugins ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
 
       - name: Create the GitHub release
         if: ${{ inputs.release_assets != '' }}
