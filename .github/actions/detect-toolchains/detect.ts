@@ -78,7 +78,9 @@ export function detectTargets(rootDir: string): Target[] {
   const ownsMaven = detectToolchains(rootDir).includes("maven");
   const pomPath = join(rootDir, "pom.xml");
   const pom = ownsMaven && existsSync(pomPath) ? readFileSync(pomPath, "utf-8") : "";
-  if (/maven-publish/.test(scripts) || /distributionManagement/.test(pom)) found.push("maven");
+  // Applying maven-publish is required by the plugin-publish plugin, so only a declared repository
+  // distinguishes a repo that actually publishes to one.
+  if (/publishing\s*\{[\s\S]*repositories\s*\{/.test(scripts) || /distributionManagement/.test(pom)) found.push("maven");
 
   if (/com[.]gradle[.]plugin-publish|publishPlugins/.test(scripts)) found.push("plugin-portal");
 
@@ -96,12 +98,16 @@ function parseOverride<T extends string>(raw: string, known: readonly T[], label
 }
 
 export function outputLines(rootDir: string, override: string, targetsOverride: string): string[] {
-  const toolchains = override.trim().length > 0
-    ? parseOverride(override, TOOLCHAIN_ORDER, "toolchain")
-    : detectToolchains(rootDir);
-  const targets = targetsOverride.trim().length > 0
-    ? parseOverride(targetsOverride, TARGET_ORDER, "target")
-    : detectTargets(rootDir);
+  const toolchains = override.trim() === "none"
+    ? []
+    : override.trim().length > 0
+      ? parseOverride(override, TOOLCHAIN_ORDER, "toolchain")
+      : detectToolchains(rootDir);
+  const targets = targetsOverride.trim() === "none"
+    ? []
+    : targetsOverride.trim().length > 0
+      ? parseOverride(targetsOverride, TARGET_ORDER, "target")
+      : detectTargets(rootDir);
 
   const lines = [`toolchains=${toolchains.join(" ")}`, `targets=${targets.join(" ")}`];
   for (const tool of TOOLCHAIN_ORDER) lines.push(`${tool}=${toolchains.includes(tool) ? "true" : ""}`);

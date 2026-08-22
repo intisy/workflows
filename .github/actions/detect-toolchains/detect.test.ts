@@ -97,7 +97,8 @@ describe("detectTargets", () => {
   });
 
   it("detects maven from the gradle plugin and from a pom", () => {
-    expect(detectTargets(repo({ "build.gradle": "apply plugin: 'maven-publish'" }))).toContain("maven");
+    const gradleDir = repo({ "build.gradle": "apply plugin: 'maven-publish'\npublishing { repositories { maven { url = 'https://example.com' } } }" });
+    expect(detectTargets(gradleDir)).toContain("maven");
     expect(detectTargets(repo({ "pom.xml": "<distributionManagement/>" }))).toContain("maven");
   });
 
@@ -119,6 +120,16 @@ describe("detectTargets", () => {
 
   it("does not treat a malformed package.json as an npm target", () => {
     expect(detectTargets(repo({ "package.json": "not json" }))).not.toContain("npm");
+  });
+
+  it("does not treat the maven-publish plugin alone as a maven target", () => {
+    const dir = repo({ "build.gradle": "plugins { id 'maven-publish' }\npublishing { publications { } }" });
+    expect(detectTargets(dir)).not.toContain("maven");
+  });
+
+  it("treats a declared publishing repository as a maven target", () => {
+    const dir = repo({ "build.gradle": "publishing { repositories { maven { url = 'https://example.com' } } }" });
+    expect(detectTargets(dir)).toContain("maven");
   });
 });
 
@@ -159,5 +170,12 @@ describe("outputLines", () => {
   it("reports the gradle root when gradle is present", () => {
     expect(outputLines(repo({ "java/settings.gradle": "" }), "", "")).toContain("gradle_root=java");
     expect(outputLines(repo({ "settings.gradle": "" }), "", "")).toContain("gradle_root=.");
+  });
+
+  it("accepts none as an explicit empty override", () => {
+    const lines = outputLines(repo({ "package.json": '{"name":"thing"}' }), "none", "none");
+    expect(lines).toContain("toolchains=");
+    expect(lines).toContain("targets=");
+    expect(lines).toContain("node=");
   });
 });
