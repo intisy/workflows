@@ -1,0 +1,367 @@
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      targets:
+        description: 'Space separated publish-target list that replaces detection entirely'
+        required: false
+        type: string
+        default: ''
+      toolchains:
+        description: 'Space separated toolchain list that replaces detection entirely'
+        required: false
+        type: string
+        default: ''
+      tag:
+        description: 'Release tag the version is taken from; empty takes the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+      patch_ceiling:
+        description: 'Patch number at or above which a release tag is refused; 0 disables the guard'
+        required: false
+        type: number
+        default: 0
+      require_clean_readme:
+        description: 'Fail when the committed README is not what the build regenerates'
+        required: false
+        type: boolean
+        default: false
+      submodules:
+        required: false
+        type: string
+        default: 'recursive'
+      timeout_minutes:
+        description: 'Job timeout; raise it for a genuinely slow build or publish'
+        required: false
+        type: number
+        default: 60
+      node_version:
+        required: false
+        type: string
+        default: '24'
+      node_install:
+        required: false
+        type: string
+        default: 'npm install'
+      node_build:
+        required: false
+        type: string
+        default: 'npm run build'
+      java_version:
+        required: false
+        type: string
+        default: '17'
+      jdk_distribution:
+        description: 'none leaves the runner default JDK; liberica-full installs BellSoft Liberica Full'
+        required: false
+        type: string
+        default: 'temurin'
+      liberica_full_release:
+        required: false
+        type: string
+        default: '8u372+7'
+      gradle_build:
+        required: false
+        type: string
+        default: 'build'
+      gradle_args:
+        required: false
+        type: string
+        default: ''
+      maven_build:
+        required: false
+        type: string
+        default: 'package'
+      cmake_configure:
+        required: false
+        type: string
+        default: '-B build'
+      cmake_build:
+        required: false
+        type: string
+        default: '--build build'
+      make_build:
+        required: false
+        type: string
+        default: ''
+      publish_task:
+        description: 'Gradle task that builds and releases in one go; while set it replaces the gradle build and the jar publish'
+        required: false
+        type: string
+        default: ''
+      release_assets:
+        description: 'Glob of the files uploaded to the GitHub release; empty creates no release'
+        required: false
+        type: string
+        default: ''
+      generate_release_notes:
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        required: false
+        type: boolean
+        default: false
+      unscoped_name:
+        description: 'The package name published to npm'
+        required: false
+        type: string
+        default: ''
+      scope:
+        description: 'npm scope to also publish under, without the leading at sign'
+        required: false
+        type: string
+        default: ''
+      scoped_only:
+        description: 'Publish only under the scope; the unscoped name is unavailable on npm'
+        required: false
+        type: boolean
+        default: false
+      pin_file_deps:
+        description: 'Rewrite file: dependencies to the published version each one carries'
+        required: false
+        type: boolean
+        default: false
+      jar_module:
+        description: 'Whitespace separated gradle modules to jar-publish, without leading colons'
+        required: false
+        type: string
+        default: ''
+      jar_pretest_task:
+        description: 'Gradle task run before the jar publish'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      envPAT:
+        required: false
+      envKEY:
+        description: 'Gradle plugin portal key'
+        required: false
+      envSECRET:
+        description: 'Gradle plugin portal secret'
+        required: false
+
+# No permissions block: a called workflow can only downgrade the caller's grant, so every scope is
+# the caller's alone to declare, and it must name the ones its targets need.
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Guard against a publish that would produce nothing
+        if: ${{ inputs.scoped_only && inputs.scope == '' }}
+        run: |
+          echo "::error::scoped_only needs a scope, otherwise nothing is published."
+          exit 1
+
+      - name: Resolve the release tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard against runaway patch versions
+        if: ${{ inputs.patch_ceiling > 0 }}
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+          CEILING: ${{ inputs.patch_ceiling }}
+        run: |
+          PATCH="${TAG##*.}"
+          if [ "${PATCH:-0}" -ge "$CEILING" ]; then
+            echo "::error::Tag ${TAG} has patch >= ${CEILING}, bump the minor version instead of more patches."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Detect toolchains and targets
+        id: detect
+        uses: intisy/workflows/.github/actions/detect-toolchains@main
+        with:
+          override: ${{ inputs.toolchains }}
+          targets: ${{ inputs.targets }}
+
+      - name: Setup Node.js
+        if: ${{ steps.detect.outputs.node != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm
+        if: ${{ steps.detect.outputs.npm != '' }}
+        run: npm install -g npm@latest
+
+      - name: Install BellSoft Liberica JDK Full
+        if: ${{ (steps.detect.outputs.gradle != '' || steps.detect.outputs.maven != '') && inputs.jdk_distribution == 'liberica-full' }}
+        run: |
+          release="${{ inputs.liberica_full_release }}"
+          dir="jdk${release%%+*}-full"
+          wget "https://download.bell-sw.com/java/${release}/bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          tar -xzf "bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          sudo mv "$dir" "/opt/bellsoft-$dir"
+          echo "JAVA_HOME=/opt/bellsoft-$dir" >> "$GITHUB_ENV"
+          echo "/opt/bellsoft-$dir/bin" >> "$GITHUB_PATH"
+
+      - name: Setup Java
+        if: ${{ (steps.detect.outputs.gradle != '' || steps.detect.outputs.maven != '') && inputs.jdk_distribution != 'liberica-full' && inputs.jdk_distribution != 'none' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
+
+      - name: Grant execute permission for gradlew
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: chmod +x gradlew
+
+      - name: Install node dependencies
+        if: ${{ steps.detect.outputs.node != '' }}
+        run: ${{ inputs.node_install }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Build with node
+        if: ${{ steps.detect.outputs.node != '' && inputs.node_build != '' }}
+        run: ${{ inputs.node_build }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Build with gradle
+        if: ${{ steps.detect.outputs.gradle != '' && inputs.publish_task == '' && steps.detect.outputs.node == '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: ./gradlew ${{ inputs.gradle_build }} ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Build with maven
+        if: ${{ steps.detect.outputs.maven != '' }}
+        run: mvn --batch-mode ${{ inputs.maven_build }}
+
+      - name: Configure with cmake
+        if: ${{ steps.detect.outputs.cmake != '' }}
+        run: cmake ${{ inputs.cmake_configure }}
+
+      - name: Build with cmake
+        if: ${{ steps.detect.outputs.cmake != '' }}
+        run: cmake ${{ inputs.cmake_build }}
+
+      - name: Build with make
+        if: ${{ steps.detect.outputs.make != '' && inputs.make_build != '' }}
+        run: make ${{ inputs.make_build }}
+
+      - name: Check the README is up to date
+        if: ${{ inputs.require_clean_readme }}
+        run: git diff --exit-code -- README.md
+
+      - name: Pin file dependencies to published versions
+        if: ${{ inputs.pin_file_deps }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const deps = pkg.dependencies || {};
+          let changed = 0;
+          for (const [name, spec] of Object.entries(deps)) {
+            if (!String(spec).startsWith("file:")) continue;
+            const { version } = JSON.parse(fs.readFileSync(String(spec).slice(5) + "/package.json", "utf8"));
+            if (!version) throw new Error(name + " declares no version to pin");
+            deps[name] = "^" + version;
+            changed++;
+            console.log(name + " -> ^" + version);
+          }
+          if (changed) fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          NODE
+
+      - name: Set the npm version from the tag
+        if: ${{ steps.detect.outputs.npm != '' }}
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          VERSION="${TAG#*v}"
+          npm version "$VERSION" --allow-same-version --no-git-tag-version
+
+      - name: Publish unscoped to npm
+        if: ${{ steps.detect.outputs.npm != '' && !inputs.scoped_only }}
+        run: npm publish --access public
+
+      - name: Publish scoped to npm
+        if: ${{ steps.detect.outputs.npm != '' && inputs.scope != '' }}
+        run: |
+          npm pkg set name="@${{ inputs.scope }}/${{ inputs.unscoped_name }}"
+          npm publish --access public
+
+      - name: Run the jar's pretest task
+        if: ${{ steps.detect.outputs.github-gradle != '' && inputs.jar_pretest_task != '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: ./gradlew :${{ inputs.jar_pretest_task }} ${{ inputs.gradle_args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      # One gradle invocation over every module, so a multi-module release uploads its assets to the
+      # one release rather than racing several invocations to create it.
+      - name: Publish jars through github-gradle
+        if: ${{ steps.detect.outputs.github-gradle != '' && inputs.publish_task == '' && inputs.jar_module != '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        env:
+          JAR_MODULES: ${{ inputs.jar_module }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+        run: |
+          TASKS=""
+          for module in $JAR_MODULES; do
+            TASKS="$TASKS :$module:jar :$module:publishGithub"
+          done
+          ./gradlew $TASKS ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }} -x test -x compileTestJava
+
+      - name: Publish with the one-shot gradle task
+        if: ${{ inputs.publish_task != '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: ./gradlew ${{ inputs.publish_task }} ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Publish to a maven repository
+        if: ${{ steps.detect.outputs.maven-target != '' && inputs.publish_task == '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: ./gradlew publish ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Publish to the Gradle plugin portal
+        if: ${{ steps.detect.outputs.plugin-portal != '' }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: >-
+          ./gradlew publishPlugins ${{ inputs.gradle_args }}
+          -Pgradle.publish.key=${{ secrets.envKEY }}
+          -Pgradle.publish.secret=${{ secrets.envSECRET }}
+          -Partifact_version=${{ steps.tag.outputs.name }}
+
+      - name: Create the GitHub release
+        if: ${{ inputs.release_assets != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+          NOTES: ${{ inputs.generate_release_notes && '--generate-notes' || '' }}
+          PRE: ${{ inputs.prerelease && '--prerelease' || '' }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" $NOTES $PRE
+          gh release upload "$TAG" ${{ inputs.release_assets }} --clobber
