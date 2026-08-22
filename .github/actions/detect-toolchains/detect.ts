@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type Toolchain = "node" | "gradle" | "maven" | "python" | "cmake" | "make";
 export type Target = "npm" | "github-gradle" | "maven" | "plugin-portal";
@@ -22,7 +23,6 @@ function has(rootDir: string, markers: readonly string[]): boolean {
   return markers.some((marker) => existsSync(join(rootDir, marker)));
 }
 
-/** Where the gradle build is rooted, or null when there is none. */
 export function detectGradleRoot(rootDir: string): string | null {
   for (const dir of GRADLE_ROOTS) {
     if (GRADLE_MARKERS.some((marker) => existsSync(join(rootDir, dir, marker)))) return dir;
@@ -31,17 +31,17 @@ export function detectGradleRoot(rootDir: string): string | null {
 }
 
 export function detectToolchains(rootDir: string): Toolchain[] {
-  const found: Toolchain[] = [];
+  const found = new Set<Toolchain>();
   const gradle = detectGradleRoot(rootDir) !== null;
-  if (has(rootDir, MARKERS.node)) found.push("node");
-  if (gradle) found.push("gradle");
+  if (has(rootDir, MARKERS.node)) found.add("node");
+  if (gradle) found.add("gradle");
   // A pom beside a gradle build is a leftover from before the migration, not a second build system.
-  if (!gradle && has(rootDir, MARKERS.maven)) found.push("maven");
-  if (has(rootDir, MARKERS.python)) found.push("python");
-  if (has(rootDir, MARKERS.cmake)) found.push("cmake");
+  if (!gradle && has(rootDir, MARKERS.maven)) found.add("maven");
+  if (has(rootDir, MARKERS.python)) found.add("python");
+  if (has(rootDir, MARKERS.cmake)) found.add("cmake");
   // A Makefile beside a real build system is a helper, so make is the fallback rather than a peer.
-  if (found.length === 0 && existsSync(join(rootDir, "Makefile"))) found.push("make");
-  return found;
+  if (found.size === 0 && existsSync(join(rootDir, "Makefile"))) found.add("make");
+  return TOOLCHAIN_ORDER.filter((tool) => found.has(tool));
 }
 
 function gradleScripts(rootDir: string): string {
@@ -118,7 +118,7 @@ function flag(name: string): string {
   return index >= 0 && index + 1 < process.argv.length ? process.argv[index + 1] : "";
 }
 
-if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("\\").join("/"))) {
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const root = flag("root") || ".";
   process.stdout.write(outputLines(root, flag("override"), flag("targets")).join("\n") + "\n");
 }

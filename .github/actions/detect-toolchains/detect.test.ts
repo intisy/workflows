@@ -116,6 +116,10 @@ describe("detectTargets", () => {
     const dir = repo({ "build.gradle.kts": 'plugins { id("io.github.intisy.github-gradle") version "1.8.3" }' });
     expect(detectTargets(dir)).not.toContain("github-gradle");
   });
+
+  it("does not treat a malformed package.json as an npm target", () => {
+    expect(detectTargets(repo({ "package.json": "not json" }))).not.toContain("npm");
+  });
 });
 
 describe("outputLines", () => {
@@ -150,5 +154,10 @@ describe("outputLines", () => {
 
   it("rejects an unknown toolchain in an override", () => {
     expect(() => outputLines(repo({}), "rust", "")).toThrow(/rust/);
+  });
+
+  it("reports the gradle root when gradle is present", () => {
+    expect(outputLines(repo({ "java/settings.gradle": "" }), "", "")).toContain("gradle_root=java");
+    expect(outputLines(repo({ "settings.gradle": "" }), "", "")).toContain("gradle_root=.");
   });
 });
