@@ -1,0 +1,38 @@
+name: Merge branches
+description: Merges one branch into another, holding generated paths to the branch being merged into.
+
+inputs:
+  source:
+    description: Branch merged from
+    required: true
+  target:
+    description: Branch merged into
+    required: true
+  mode:
+    description: merge for a normal merge, overwrite to take the source tree wholesale
+    required: false
+    default: merge
+  sync_back:
+    description: Bring the target back onto the source afterwards, so the source never falls behind
+    required: false
+    default: 'false'
+  generated_paths:
+    description: >-
+      Newline separated file paths generated on whichever branch is being merged into; each always
+      resolves to that branch's own version, and is removed when that branch does not track it.
+      Files only, not directories.
+    required: false
+    default: README.md
+
+runs:
+  using: composite
+  steps:
+    - name: Merge
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        TARGET: ${{ inputs.target }}
+        MODE: ${{ inputs.mode }}
+        SYNC_BACK: ${{ inputs.sync_back }}
+        GENERATED_PATHS: ${{ inputs.generated_paths }}
+      run: bash "${{ github.action_path }}/merge.sh"
