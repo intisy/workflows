@@ -32,7 +32,7 @@ on:
         type: boolean
         default: false
       jar_module:
-        description: 'Gradle module to jar-publish, e.g. "antigravity-provider" (no leading colon); empty to skip'
+        description: 'Whitespace-separated Gradle modules to jar-publish, e.g. "routing proxy-contracts" (no leading colon); empty to skip'
         required: false
         type: string
         default: ''
@@ -163,10 +163,19 @@ jobs:
         working-directory: java
         run: ./gradlew :${{ inputs.jar_pretest_task }}
 
-      - name: Publish jar
+      # One gradle invocation over every module, so a multi-module release uploads its assets to the
+      # one release rather than racing several invocations to create it. A single module is just a
+      # one-element list, so an existing caller passing one name is unaffected.
+      - name: Publish jars
         if: ${{ inputs.jar_module != '' }}
         working-directory: java
-        run: ./gradlew :${{ inputs.jar_module }}:jar :${{ inputs.jar_module }}:publishGithub -Partifact_version=${{ steps.tag.outputs.name }} -x test -x compileTestJava
         env:
+          JAR_MODULES: ${{ inputs.jar_module }}
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
+        run: |
+          TASKS=""
+          for module in $JAR_MODULES; do
+            TASKS="$TASKS :$module:jar :$module:publishGithub"
+          done
+          ./gradlew $TASKS -Partifact_version=${{ steps.tag.outputs.name }} -x test -x compileTestJava
