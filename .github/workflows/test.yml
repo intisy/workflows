@@ -1,0 +1,256 @@
+name: Test
+
+on:
+  workflow_call:
+    inputs:
+      toolchains:
+        description: 'Space separated toolchain list that replaces detection entirely'
+        required: false
+        type: string
+        default: ''
+      runners:
+        description: 'JSON array of the runner labels the job fans out over'
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      submodules:
+        description: 'Passed to actions/checkout; recursive, true or false'
+        required: false
+        type: string
+        default: 'recursive'
+      ref:
+        description: 'Ref to test; empty tests the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        required: false
+        type: string
+        default: '24'
+      node_install:
+        required: false
+        type: string
+        default: 'npm install'
+      node_build:
+        description: 'Empty skips the node build'
+        required: false
+        type: string
+        default: 'npm run build'
+      node_test:
+        required: false
+        type: string
+        default: 'npx vitest run'
+      java_version:
+        required: false
+        type: string
+        default: '17'
+      jdk_distribution:
+        description: 'none leaves the runner default JDK; liberica-full installs BellSoft Liberica Full'
+        required: false
+        type: string
+        default: 'temurin'
+      liberica_full_release:
+        required: false
+        type: string
+        default: '8u372+7'
+      gradle_pretest:
+        description: 'Gradle task run before the tests, for fixtures the tests need installed'
+        required: false
+        type: string
+        default: ''
+      gradle_test:
+        required: false
+        type: string
+        default: 'test'
+      gradle_args:
+        description: 'Appended to every gradle invocation, for example --no-daemon'
+        required: false
+        type: string
+        default: ''
+      maven_test:
+        required: false
+        type: string
+        default: 'test'
+      python_version:
+        required: false
+        type: string
+        default: '3.x'
+      python_test:
+        required: false
+        type: string
+        default: '-m unittest discover -s . -t . -v'
+      cmake_configure:
+        required: false
+        type: string
+        default: '-B build'
+      cmake_build:
+        required: false
+        type: string
+        default: '--build build'
+      cmake_test:
+        description: 'Empty skips ctest'
+        required: false
+        type: string
+        default: ''
+      make_test:
+        required: false
+        type: string
+        default: 'test'
+      extra_repository:
+        description: 'A sibling checkout the tests compile against, as owner/name'
+        required: false
+        type: string
+        default: ''
+      extra_path:
+        required: false
+        type: string
+        default: ''
+      extra_ref:
+        required: false
+        type: string
+        default: ''
+    secrets:
+      envPAT:
+        description: 'Token used for checkouts and builds; falls back to the job token'
+        required: false
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Checkout the sibling repository
+        if: ${{ inputs.extra_repository != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.extra_repository }}
+          ref: ${{ inputs.extra_ref }}
+          path: ${{ inputs.extra_path }}
+          submodules: recursive
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Detect toolchains
+        id: detect
+        uses: intisy/workflows/.github/actions/detect-toolchains@main
+        with:
+          override: ${{ inputs.toolchains }}
+
+      - name: Setup Node.js
+        if: ${{ steps.detect.outputs.node != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install BellSoft Liberica JDK Full
+        if: ${{ steps.detect.outputs.gradle != '' && inputs.jdk_distribution == 'liberica-full' }}
+        shell: bash
+        run: |
+          release="${{ inputs.liberica_full_release }}"
+          dir="jdk${release%%+*}-full"
+          wget "https://download.bell-sw.com/java/${release}/bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          tar -xzf "bellsoft-jdk${release}-linux-amd64-full.tar.gz"
+          sudo mv "$dir" "/opt/bellsoft-$dir"
+          echo "JAVA_HOME=/opt/bellsoft-$dir" >> "$GITHUB_ENV"
+          echo "/opt/bellsoft-$dir/bin" >> "$GITHUB_PATH"
+
+      - name: Setup Java
+        if: ${{ (steps.detect.outputs.gradle != '' || steps.detect.outputs.maven != '') && inputs.jdk_distribution != 'liberica-full' && inputs.jdk_distribution != 'none' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
+
+      - name: Setup Python
+        if: ${{ steps.detect.outputs.python != '' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Grant execute permission for gradlew
+        if: ${{ steps.detect.outputs.gradle != '' && runner.os != 'Windows' }}
+        shell: bash
+        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        run: chmod +x gradlew
+
+      - name: Install node dependencies
+        if: ${{ steps.detect.outputs.node != '' }}
+        shell: bash
+        run: ${{ inputs.node_install }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Build with node
+        if: ${{ steps.detect.outputs.node != '' && inputs.node_build != '' }}
+        shell: bash
+        run: ${{ inputs.node_build }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Test with node
+        if: ${{ steps.detect.outputs.node != '' }}
+        shell: bash
+        run: ${{ inputs.node_test }}
+
+      - name: Run the gradle pretest task
+        if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_pretest != '' }}
+        shell: bash
+        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        run: ./gradlew ${{ inputs.gradle_pretest }} ${{ inputs.gradle_args }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Test with gradle
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        shell: bash
+        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Test with maven
+        if: ${{ steps.detect.outputs.maven != '' }}
+        shell: bash
+        run: mvn --batch-mode ${{ inputs.maven_test }}
+
+      - name: Test with python
+        if: ${{ steps.detect.outputs.python != '' }}
+        shell: bash
+        run: python3 ${{ inputs.python_test }}
+
+      - name: Configure with cmake
+        if: ${{ steps.detect.outputs.cmake != '' }}
+        shell: bash
+        run: cmake ${{ inputs.cmake_configure }}
+
+      - name: Build with cmake
+        if: ${{ steps.detect.outputs.cmake != '' }}
+        shell: bash
+        run: cmake ${{ inputs.cmake_build }}
+
+      - name: Test with ctest
+        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_test != '' }}
+        shell: bash
+        run: ${{ inputs.cmake_test }}
+
+      - name: Test with make
+        if: ${{ steps.detect.outputs.make != '' }}
+        shell: bash
+        run: make ${{ inputs.make_test }}
