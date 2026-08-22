@@ -70,14 +70,15 @@ describe("merge-branches", () => {
   it("leaves the target's generated file in place when merging forward", () => {
     const { work, remote } = fixture();
     git(work, "checkout", "development");
-    commit(work, "source.txt", "three\n", "feat: newer work on development");
+    commit(work, "feature.txt", "three\n", "feat: newer work on development");
     git(work, "push", "origin", "development");
 
     run(work, { SOURCE: "development", TARGET: "main" });
 
     const clone = join(mkdtempSync(join(tmpdir(), "merge-verify-")), "clone");
     git(".", "clone", "--branch", "main", remote, clone);
-    expect(git(clone, "show", "main:source.txt")).toBe("three");
+    expect(git(clone, "show", "main:feature.txt")).toBe("three");
+    expect(git(clone, "show", "main:source.txt")).toBe("two");
     expect(git(clone, "show", "main:README.md")).toBe("generated");
   });
 
@@ -98,5 +99,14 @@ describe("merge-branches", () => {
     git(".", "clone", "--branch", "main", remote, clone);
     expect(git(clone, "show", "main:source.txt")).toBe("four");
     expect(git(clone, "show", "main:README.md")).toBe("generated");
+  });
+
+  it("fails when a real conflict exists outside the generated paths", () => {
+    const { work } = fixture();
+    git(work, "checkout", "development");
+    commit(work, "source.txt", "conflicting\n", "feat: same line as main");
+    git(work, "push", "origin", "development");
+
+    expect(() => run(work, { SOURCE: "development", TARGET: "main" })).toThrow();
   });
 });

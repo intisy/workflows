@@ -56,7 +56,7 @@ merge_into() {
     git merge -s ours --no-commit --allow-unrelated-histories "$from"
     git read-tree --reset -u "$from"
   else
-    git merge --no-commit --no-ff -X theirs "$from" || {
+    git merge --no-commit --no-ff "$from" || {
       git rev-parse -q --verify MERGE_HEAD >/dev/null || {
         echo "::error::merge of $from into $onto could not start"
         exit 1
