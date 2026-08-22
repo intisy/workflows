@@ -44,15 +44,35 @@ export function detectToolchains(rootDir: string): Toolchain[] {
   return TOOLCHAIN_ORDER.filter((tool) => found.has(tool));
 }
 
-function gradleScripts(rootDir: string): string {
-  let text = "";
+function gradleScripts(rootDir: string): string[] {
+  const texts: string[] = [];
   for (const dir of GRADLE_ROOTS) {
     for (const marker of GRADLE_MARKERS) {
       const path = join(rootDir, dir, marker);
-      if (existsSync(path)) text += readFileSync(path, "utf-8");
+      if (existsSync(path)) texts.push(readFileSync(path, "utf-8"));
     }
   }
-  return text;
+  return texts;
+}
+
+function publishingBlocks(script: string): string[] {
+  const blocks: string[] = [];
+  const opener = /publishing\s*\{/g;
+  while (opener.exec(script) !== null) {
+    let depth = 1;
+    let index = opener.lastIndex;
+    while (index < script.length && depth > 0) {
+      if (script[index] === "{") depth += 1;
+      else if (script[index] === "}") depth -= 1;
+      index += 1;
+    }
+    if (depth === 0) blocks.push(script.slice(opener.lastIndex, index - 1));
+  }
+  return blocks;
+}
+
+function declaresMavenRepository(scripts: readonly string[]): boolean {
+  return scripts.some((script) => publishingBlocks(script).some((block) => /repositories\s*\{/.test(block)));
 }
 
 function publishesNpm(rootDir: string): boolean {
@@ -73,16 +93,16 @@ export function detectTargets(rootDir: string): Target[] {
   const scripts = gradleScripts(rootDir);
   // Applying the plugin only means a repo resolves dependencies through it; naming the task is
   // what says it publishes.
-  if (/publishGithub/.test(scripts)) found.push("github-gradle");
+  if (scripts.some((script) => /publishGithub/.test(script))) found.push("github-gradle");
 
   const ownsMaven = detectToolchains(rootDir).includes("maven");
   const pomPath = join(rootDir, "pom.xml");
   const pom = ownsMaven && existsSync(pomPath) ? readFileSync(pomPath, "utf-8") : "";
-  // Applying maven-publish is required by the plugin-publish plugin, so only a declared repository
-  // distinguishes a repo that actually publishes to one.
-  if (/publishing\s*\{[\s\S]*repositories\s*\{/.test(scripts) || /distributionManagement/.test(pom)) found.push("maven");
+  // Applying maven-publish is required by the plugin-publish plugin, so only a repository declared
+  // inside the publishing block distinguishes a repo that actually publishes to one.
+  if (declaresMavenRepository(scripts) || /distributionManagement/.test(pom)) found.push("maven");
 
-  if (/com[.]gradle[.]plugin-publish|publishPlugins/.test(scripts)) found.push("plugin-portal");
+  if (scripts.some((script) => /com[.]gradle[.]plugin-publish|publishPlugins/.test(script))) found.push("plugin-portal");
 
   return TARGET_ORDER.filter((target) => found.includes(target));
 }

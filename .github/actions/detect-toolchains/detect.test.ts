@@ -131,6 +131,24 @@ describe("detectTargets", () => {
     const dir = repo({ "build.gradle": "publishing { repositories { maven { url = 'https://example.com' } } }" });
     expect(detectTargets(dir)).toContain("maven");
   });
+
+  it("ignores a dependency repositories block trailing the publishing block", () => {
+    const dir = repo({
+      "build.gradle": [
+        "publishing { publications { create('x') { } } }",
+        "repositories { mavenCentral() }",
+      ].join("\n"),
+    });
+    expect(detectTargets(dir)).not.toContain("maven");
+  });
+
+  it("does not join a publishing block in one script to a repositories block in another", () => {
+    const dir = repo({
+      "settings.gradle": "publishing { publications { } }",
+      "build.gradle": "repositories { mavenCentral() }",
+    });
+    expect(detectTargets(dir)).not.toContain("maven");
+  });
 });
 
 describe("outputLines", () => {
