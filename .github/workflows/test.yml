@@ -13,6 +13,11 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest"]'
+      timeout_minutes:
+        description: 'Job timeout; raise it for a genuinely slow suite'
+        required: false
+        type: number
+        default: 60
       submodules:
         description: 'Passed to actions/checkout; recursive, true or false'
         required: false
@@ -88,14 +93,19 @@ on:
         type: string
         default: '--build build'
       cmake_test:
-        description: 'Empty skips ctest'
+        description: 'Empty skips ctest; set it empty only for a project that registers none'
         required: false
         type: string
-        default: ''
+        default: 'ctest --test-dir build --output-on-failure'
       make_test:
         required: false
         type: string
         default: 'test'
+      post_test:
+        description: 'Command run after every toolchain has been tested; empty runs nothing'
+        required: false
+        type: string
+        default: ''
       extra_repository:
         description: 'A sibling checkout the tests compile against, as owner/name'
         required: false
@@ -121,7 +131,15 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.runners) }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
+      - name: Reject a sibling checkout with no path
+        if: ${{ inputs.extra_repository != '' && inputs.extra_path == '' }}
+        shell: bash
+        run: |
+          echo "::error::extra_repository needs extra_path, otherwise the sibling checkout overwrites the primary one."
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -151,8 +169,15 @@ jobs:
         with:
           node-version: ${{ inputs.node_version }}
 
+      - name: Reject Liberica on a non-Linux runner
+        if: ${{ inputs.jdk_distribution == 'liberica-full' && runner.os != 'Linux' }}
+        shell: bash
+        run: |
+          echo "::error::jdk_distribution liberica-full installs a linux-amd64 build and cannot run on ${{ runner.os }}. Use temurin, or drop this runner from the matrix."
+          exit 1
+
       - name: Install BellSoft Liberica JDK Full
-        if: ${{ steps.detect.outputs.gradle != '' && inputs.jdk_distribution == 'liberica-full' }}
+        if: ${{ steps.detect.outputs.gradle != '' && inputs.jdk_distribution == 'liberica-full' && runner.os == 'Linux' }}
         shell: bash
         run: |
           release="${{ inputs.liberica_full_release }}"
@@ -176,10 +201,11 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
+      # Git Bash resolves the executable bit itself on Windows, so the chmod is only needed elsewhere.
       - name: Grant execute permission for gradlew
         if: ${{ steps.detect.outputs.gradle != '' && runner.os != 'Windows' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: chmod +x gradlew
 
       - name: Install node dependencies
@@ -208,7 +234,7 @@ jobs:
       - name: Run the gradle pretest task
         if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_pretest != '' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.gradle_pretest }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -218,7 +244,7 @@ jobs:
       - name: Test with gradle
         if: ${{ steps.detect.outputs.gradle != '' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root }}
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -229,6 +255,10 @@ jobs:
         if: ${{ steps.detect.outputs.maven != '' }}
         shell: bash
         run: mvn --batch-mode ${{ inputs.maven_test }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
 
       - name: Test with python
         if: ${{ steps.detect.outputs.python != '' }}
@@ -254,3 +284,8 @@ jobs:
         if: ${{ steps.detect.outputs.make != '' }}
         shell: bash
         run: make ${{ inputs.make_test }}
+
+      - name: Run the post-test command
+        if: ${{ inputs.post_test != '' }}
+        shell: bash
+        run: ${{ inputs.post_test }}
