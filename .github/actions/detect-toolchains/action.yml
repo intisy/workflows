@@ -1,0 +1,77 @@
+name: Detect toolchains
+description: Reports which build toolchains and publish targets a repository has.
+
+inputs:
+  root:
+    description: Directory to inspect
+    required: false
+    default: '.'
+  override:
+    description: Space separated toolchain list that replaces detection entirely
+    required: false
+    default: ''
+  targets:
+    description: Space separated publish-target list that replaces detection entirely
+    required: false
+    default: ''
+
+outputs:
+  toolchains:
+    description: Space separated toolchains, in canonical run order
+    value: ${{ steps.detect.outputs.toolchains }}
+  targets:
+    description: Space separated publish targets
+    value: ${{ steps.detect.outputs.targets }}
+  gradle_root:
+    description: Directory the gradle build is rooted at, empty when there is none
+    value: ${{ steps.detect.outputs.gradle_root }}
+  node:
+    description: Non-empty when the repository has a node toolchain
+    value: ${{ steps.detect.outputs.node }}
+  gradle:
+    description: Non-empty when the repository has a gradle toolchain
+    value: ${{ steps.detect.outputs.gradle }}
+  maven:
+    description: Non-empty when the repository has a maven toolchain
+    value: ${{ steps.detect.outputs.maven }}
+  python:
+    description: Non-empty when the repository has a python toolchain
+    value: ${{ steps.detect.outputs.python }}
+  cmake:
+    description: Non-empty when the repository has a cmake toolchain
+    value: ${{ steps.detect.outputs.cmake }}
+  make:
+    description: Non-empty when the repository builds with make alone
+    value: ${{ steps.detect.outputs.make }}
+  npm:
+    description: Non-empty when the repository publishes to npm
+    value: ${{ steps.detect.outputs.npm }}
+  github-gradle:
+    description: Non-empty when the repository publishes jars through github-gradle
+    value: ${{ steps.detect.outputs.github-gradle }}
+  maven-target:
+    description: Non-empty when the repository publishes to a maven repository
+    value: ${{ steps.detect.outputs.maven-target }}
+  plugin-portal:
+    description: Non-empty when the repository publishes to the Gradle plugin portal
+    value: ${{ steps.detect.outputs.plugin-portal }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Detect
+      id: detect
+      shell: bash
+      env:
+        ROOT: ${{ inputs.root }}
+        OVERRIDE: ${{ inputs.override }}
+        TARGETS: ${{ inputs.targets }}
+      run: |
+        node "${{ github.action_path }}/detect.ts" \
+          --root "$ROOT" --override "$OVERRIDE" --targets "$TARGETS" >> "$GITHUB_OUTPUT"
+        cat "$GITHUB_OUTPUT"
