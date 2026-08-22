@@ -164,7 +164,7 @@ jobs:
           override: ${{ inputs.toolchains }}
 
       - name: Guard against a run that would test nothing
-        if: ${{ steps.detect.outputs.toolchains == '' }}
+        if: ${{ steps.detect.outputs.toolchains == '' && inputs.toolchains != 'none' }}
         shell: bash
         run: |
           echo "::error::No build toolchain was detected and none was set, so this run would test nothing. Set the toolchains input, or check the repository's build markers."
