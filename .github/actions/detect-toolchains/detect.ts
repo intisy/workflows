@@ -71,7 +71,9 @@ export function detectTargets(rootDir: string): Target[] {
   if (publishesNpm(rootDir)) found.push("npm");
 
   const scripts = gradleScripts(rootDir);
-  if (/publishGithub|io[.]github[.]intisy[.]github/.test(scripts)) found.push("github-gradle");
+  // Applying the plugin only means a repo resolves dependencies through it; naming the task is
+  // what says it publishes.
+  if (/publishGithub/.test(scripts)) found.push("github-gradle");
 
   const ownsMaven = detectToolchains(rootDir).includes("maven");
   const pomPath = join(rootDir, "pom.xml");
@@ -103,7 +105,10 @@ export function outputLines(rootDir: string, override: string, targetsOverride: 
 
   const lines = [`toolchains=${toolchains.join(" ")}`, `targets=${targets.join(" ")}`];
   for (const tool of TOOLCHAIN_ORDER) lines.push(`${tool}=${toolchains.includes(tool) ? "true" : ""}`);
-  for (const target of TARGET_ORDER) lines.push(`${target}=${targets.includes(target) ? "true" : ""}`);
+  for (const target of TARGET_ORDER) {
+    const key = target === "maven" ? "maven-target" : target;
+    lines.push(`${key}=${targets.includes(target) ? "true" : ""}`);
+  }
   lines.push(`gradle_root=${toolchains.includes("gradle") ? (detectGradleRoot(rootDir) ?? "") : ""}`);
   return lines;
 }

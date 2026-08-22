@@ -111,6 +111,11 @@ describe("detectTargets", () => {
     const dir = repo({ "java/build.gradle": "publishGithub" });
     expect(detectTargets(dir)).toContain("github-gradle");
   });
+
+  it("does not treat a plugin consumer as a github-gradle publisher", () => {
+    const dir = repo({ "build.gradle.kts": 'plugins { id("io.github.intisy.github-gradle") version "1.8.3" }' });
+    expect(detectTargets(dir)).not.toContain("github-gradle");
+  });
 });
 
 describe("outputLines", () => {
@@ -121,6 +126,12 @@ describe("outputLines", () => {
     expect(lines).toContain("gradle=");
     expect(lines).toContain("gradle_root=");
     expect(lines).toContain("targets=npm");
+  });
+
+  it("does not emit maven twice when it is both a toolchain and a target", () => {
+    const lines = outputLines(repo({ "pom.xml": "<distributionManagement/>" }), "", "");
+    expect(lines.filter((line) => line.startsWith("maven="))).toHaveLength(1);
+    expect(lines).toContain("maven-target=true");
   });
 
   it("honours an explicit toolchain override", () => {
