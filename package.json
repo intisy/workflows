@@ -1,0 +1,22 @@
+{
+  "name": "workflows",
+  "version": "0.0.0",
+  "description": "Shared reusable GitHub Actions workflows for the intisy ecosystem.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "author": "intisy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/intisy/workflows.git"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6"
+  },
+  "engines": {
+    "node": ">= 20.0.0"
+  }
+}
