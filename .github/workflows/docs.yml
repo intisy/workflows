@@ -1,0 +1,119 @@
+name: Docs site
+
+# Builds a documentation site with the repo's own npm scripts and publishes it to GitHub Pages.
+# Every repo-specific value is an input, so the only thing a consumer writes is its trigger and
+# whatever differs from the defaults below.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Ref to build; empty takes the ref the caller ran on'
+        required: false
+        type: string
+        default: ''
+      node_version:
+        description: 'Node.js version the build runs on'
+        required: false
+        type: string
+        default: '24'
+      submodules:
+        description: 'Passed to actions/checkout; recursive, true or false'
+        required: false
+        type: string
+        default: 'false'
+      install:
+        description: 'Command that installs dependencies'
+        required: false
+        type: string
+        default: 'npm install'
+      build:
+        description: 'Command that builds the package the docs are generated from; empty skips it'
+        required: false
+        type: string
+        default: 'npm run build'
+      docs:
+        description: 'Command that renders the site'
+        required: false
+        type: string
+        default: 'npm run docs'
+      site_dir:
+        description: 'Directory the docs command writes, and what gets published'
+        required: false
+        type: string
+        default: 'site'
+      extra_paths:
+        description: 'Files to carry into the site, one "source destination" pair per line, destination relative to the site directory'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'Job timeout; raise it for a genuinely slow build'
+        required: false
+        type: number
+        default: 30
+
+# One Pages deployment at a time, and never cancelled halfway: a cancelled deploy leaves the site
+# serving whichever half arrived first.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Install
+        run: ${{ inputs.install }}
+
+      - name: Build
+        if: ${{ inputs.build != '' }}
+        run: ${{ inputs.build }}
+
+      - name: Render the site
+        run: ${{ inputs.docs }}
+
+      - name: Carry the extra paths into the site
+        if: ${{ inputs.extra_paths != '' }}
+        env:
+          SITE: ${{ inputs.site_dir }}
+          EXTRA: ${{ inputs.extra_paths }}
+        run: |
+          printf '%s\n' "$EXTRA" | while read -r source destination; do
+            [ -n "$source" ] || continue
+            if [ -z "$destination" ]; then
+              echo "::error::extra_paths needs a destination for $source"
+              exit 1
+            fi
+            mkdir -p "$(dirname "$SITE/$destination")"
+            cp -r "$source" "$SITE/$destination"
+          done
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ inputs.site_dir }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
