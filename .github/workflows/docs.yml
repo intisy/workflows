@@ -91,7 +91,9 @@ jobs:
           SITE: ${{ inputs.site_dir }}
           EXTRA: ${{ inputs.extra_paths }}
         run: |
-          printf '%s\n' "$EXTRA" | while read -r source destination; do
+          # A here-string rather than a pipe, so the loop runs in this shell and the exit below
+          # actually fails the step instead of a subshell nobody is watching.
+          while read -r source destination; do
             [ -n "$source" ] || continue
             if [ -z "$destination" ]; then
               echo "::error::extra_paths needs a destination for $source"
@@ -99,7 +101,7 @@ jobs:
             fi
             mkdir -p "$(dirname "$SITE/$destination")"
             cp -r "$source" "$SITE/$destination"
-          done
+          done <<< "$EXTRA"
 
       - uses: actions/upload-pages-artifact@v3
         with:
