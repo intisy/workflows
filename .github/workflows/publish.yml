@@ -350,18 +350,51 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require("fs");
+          const https = require("https");
           const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-          const deps = pkg.dependencies || {};
-          let changed = 0;
-          for (const [name, spec] of Object.entries(deps)) {
-            if (!String(spec).startsWith("file:")) continue;
-            const { version } = JSON.parse(fs.readFileSync(String(spec).slice(5) + "/package.json", "utf8"));
-            if (!version) throw new Error(name + " declares no version to pin");
-            deps[name] = "^" + version;
-            changed++;
-            console.log(name + " -> ^" + version);
+          // overrides carries the same file: spec in repos that force one copy of a
+          // library through the tree. Leaving it behind makes npm publish EOVERRIDE,
+          // because the override then contradicts the dependency just pinned.
+          const groups = ["dependencies", "optionalDependencies", "peerDependencies", "overrides"];
+          const pinned = new Map();
+          for (const group of groups) {
+            const specs = pkg[group];
+            if (!specs) continue;
+            for (const [name, spec] of Object.entries(specs)) {
+              if (!String(spec).startsWith("file:")) continue;
+              const { version } = JSON.parse(fs.readFileSync(String(spec).slice(5) + "/package.json", "utf8"));
+              if (!version) throw new Error(name + " declares no version to pin");
+              specs[name] = "^" + version;
+              pinned.set(name, version);
+              console.log(group + "." + name + " -> ^" + version);
+            }
           }
-          if (changed) fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+          if (pinned.size > 0) fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+
+          // A file: dep is pinned from the SUBMODULE's package.json, which says nothing
+          // about whether that version was ever published. A range no version satisfies
+          // makes the package uninstallable, and npm publish itself never checks.
+          // Publishing the dependency first is the fix; failing here is how anyone
+          // finds out.
+          const status = (name, version) => new Promise((resolve) => {
+            const url = "https://registry.npmjs.org/" + name.replace("/", "%2f") + "/" + version;
+            https.get(url, (res) => {
+              res.resume();
+              resolve(res.statusCode);
+            }).on("error", () => resolve(0));
+          });
+          (async () => {
+            const missing = [];
+            for (const [name, version] of pinned) {
+              const code = await status(name, version);
+              if (code === 404) missing.push(name + "@" + version);
+              else if (code !== 200) console.log("could not verify " + name + "@" + version + " (HTTP " + code + "), continuing");
+            }
+            if (missing.length > 0) {
+              console.error("pinned to unpublished version(s): " + missing.join(", ") + " -- publish those first");
+              process.exit(1);
+            }
+          })();
           NODE
 
       # Gated on node rather than on the npm target: a GitHub-only pre-release publishes no package
