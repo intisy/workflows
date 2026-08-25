@@ -1,0 +1,22 @@
+name: Monitor
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    uses: intisy/workflows/.github/workflows/monitor.yml@main
+    with:
+      # A repository variable, so a fork with nothing deployed skips and stays green.
+      url: ${{ vars.SERVICE_URL }}
+      path: /status
+      # Returns a string naming what is wrong, or empty when healthy.
+      unhealthy_jq: >-
+        to_entries
+        | map(select(.value != null and .value.state == "error"))
+        | map("\(.key): \(.value.state)")
+        | join("; ")
+    secrets:
+      token: ${{ secrets.ADMIN_TOKEN }}

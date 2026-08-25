@@ -1,0 +1,133 @@
+name: Deploy to Cloudflare
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Ref to deploy; empty deploys the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+      working_directory:
+        description: 'Directory holding wrangler.toml and package.json'
+        required: false
+        type: string
+        default: '.'
+      node_version:
+        required: false
+        type: string
+        default: '24'
+      node_install:
+        description: 'Install command; ci is preferred over install so a deploy uses the committed lockfile'
+        required: false
+        type: string
+        default: 'npm ci'
+      checks:
+        description: >-
+          Newline separated commands run in order before deploying, so a version that cannot pass
+          its own checks is never shipped. Empty runs none.
+        required: false
+        type: string
+        default: ''
+      command:
+        description: 'Wrangler command and arguments, appended to npx wrangler'
+        required: false
+        type: string
+        default: 'deploy'
+      environment:
+        description: 'Wrangler environment, passed as --env; empty uses the top level config'
+        required: false
+        type: string
+        default: ''
+      wrangler_version:
+        description: 'Wrangler version npx resolves; empty uses whatever the project depends on'
+        required: false
+        type: string
+        default: ''
+      submodules:
+        description: 'Passed to actions/checkout; recursive, true or false'
+        required: false
+        type: string
+        default: 'recursive'
+      timeout_minutes:
+        required: false
+        type: number
+        default: 30
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        description: >-
+          Deploy credential. A developer machine needs none, because wrangler login holds an OAuth
+          session there; CI has no browser, so it needs a token.
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        description: 'Passed as an env var rather than committed, so the account id stays out of a public repository'
+        required: false
+      envPAT:
+        description: 'Token used for the checkout; falls back to the job token'
+        required: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: npm
+          cache-dependency-path: ${{ inputs.working_directory }}/package-lock.json
+
+      - name: Install
+        run: ${{ inputs.node_install }}
+
+      # Fails before any credential is touched, so a broken build cannot reach Cloudflare at all.
+      - name: Checks
+        if: ${{ inputs.checks != '' }}
+        env:
+          CHECKS: ${{ inputs.checks }}
+        run: |
+          printf '%s\n' "$CHECKS" | while IFS= read -r check; do
+            [ -z "$check" ] && continue
+            echo "::group::$check"
+            sh -c "$check" || exit 1
+            echo "::endgroup::"
+          done
+
+      # An empty token reaches wrangler as an opaque auth failure, so it is named here instead.
+      - name: Verify deploy credentials
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set, so CI cannot deploy."
+            echo "Deploy locally instead (wrangler login needs no token), or create one at"
+            echo "Cloudflare > My Profile > API Tokens > Edit Cloudflare Workers and add it with:"
+            echo "  gh secret set CLOUDFLARE_API_TOKEN"
+            exit 1
+          fi
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SPEC: ${{ inputs.wrangler_version != '' && format('wrangler@{0}', inputs.wrangler_version) || 'wrangler' }}
+          COMMAND: ${{ inputs.command }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -- npx --yes "$WRANGLER_SPEC" $COMMAND
+          if [ -n "$ENVIRONMENT" ]; then
+            set -- "$@" --env "$ENVIRONMENT"
+          fi
+          echo "Running: $*"
+          "$@"

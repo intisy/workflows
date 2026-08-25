@@ -1,0 +1,17 @@
+name: Deploy
+
+# Deliberately manual: deploy-on-push would overwrite a live service with no review gate.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: intisy/workflows/.github/workflows/deploy-cloudflare.yml@main
+    with:
+      node_install: npm ci
+      checks: |
+        npm run typecheck
+        npm test
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
