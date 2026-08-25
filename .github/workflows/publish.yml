@@ -28,6 +28,14 @@ on:
         required: false
         type: boolean
         default: false
+      readme_from_default_branch:
+        description: >-
+          Take README.md from the default branch before packing. A repo that generates its README
+          there publishes from a tag carrying no copy, and npm ships whatever is in the working tree,
+          so without this the published package would have no README at all.
+        required: false
+        type: boolean
+        default: false
       submodules:
         required: false
         type: string
@@ -399,6 +407,18 @@ jobs:
 
       # Gated on node rather than on the npm target: a GitHub-only pre-release publishes no package
       # but still packs a tarball, which must carry the tag's version rather than the committed one.
+      - name: Take the README from the default branch
+        if: ${{ inputs.readme_from_default_branch && steps.detect.outputs.node != '' }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --depth=1 origin "$DEFAULT_BRANCH"
+          if git cat-file -e FETCH_HEAD:README.md 2>/dev/null; then
+            git show FETCH_HEAD:README.md > README.md
+          else
+            echo "::warning::$DEFAULT_BRANCH carries no README.md; publishing without one"
+          fi
+
       - name: Set the npm version from the tag
         if: ${{ steps.detect.outputs.node != '' }}
         env:

@@ -97,6 +97,24 @@ jobs:
         with:
           node-version: ${{ inputs.node_version }}
 
+      # The npm generator renders the README from the BUILT package, and several of these repos drive
+      # Gradle and TeaVM from npm run build, so the JDK has to be here or the render fails on them.
+      - name: Detect toolchains
+        if: steps.select.outputs.generator == 'npm'
+        id: detect
+        uses: intisy/workflows/.github/actions/detect-toolchains@main
+
+      - name: Setup Java
+        if: ${{ steps.select.outputs.generator == 'npm' && steps.detect.outputs.gradle_root != '' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Grant execute permission for gradlew
+        if: ${{ steps.select.outputs.generator == 'npm' && steps.detect.outputs.gradle_root != '' }}
+        run: chmod +x ${{ steps.detect.outputs.gradle_root }}/gradlew || true
+
       - name: Generate README.md from the plugin's readme spec
         if: steps.select.outputs.generator == 'npm'
         run: |
