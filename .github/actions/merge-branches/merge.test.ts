@@ -82,6 +82,27 @@ describe("merge-branches", () => {
     expect(git(clone, "show", "main:README.md")).toBe("generated");
   });
 
+  // A repo whose README is produced on the SOURCE branch has to be able to turn the hold OFF.
+  // Passing an empty value used to fall through to the default, so the file could never merge
+  // forward and the target branch kept a stale copy of it forever.
+  it("carries the source's generated file forward when the hold is cleared", () => {
+    const { work, remote } = fixture();
+    // With the hold cleared the first merge already syncs the file both ways, so development edits
+    // main's copy rather than introducing an unrelated one.
+    run(work, { SOURCE: "development", TARGET: "main", SYNC_BACK: "true", GENERATED_PATHS: "" });
+
+    git(work, "checkout", "development");
+    git(work, "pull", "--ff-only", "origin", "development");
+    commit(work, "README.md", "rebuilt on development\n", "docs: rebuild the readme");
+    git(work, "push", "origin", "development");
+
+    run(work, { SOURCE: "development", TARGET: "main", GENERATED_PATHS: "" });
+
+    const clone = join(mkdtempSync(join(tmpdir(), "merge-verify-")), "clone");
+    git(".", "clone", "--branch", "main", remote, clone);
+    expect(git(clone, "show", "main:README.md")).toBe("rebuilt on development");
+  });
+
   it("refuses an unknown mode", () => {
     const { work } = fixture();
     expect(() => run(work, { SOURCE: "development", TARGET: "main", MODE: "rebase" })).toThrow();

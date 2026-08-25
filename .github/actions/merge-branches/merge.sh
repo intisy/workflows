@@ -3,7 +3,9 @@ set -euo pipefail
 
 MODE="${MODE:-merge}"
 SYNC_BACK="${SYNC_BACK:-false}"
-GENERATED_PATHS="${GENERATED_PATHS:-README.md}"
+# Unset takes the default, but an explicitly EMPTY value means "hold nothing": a repo whose
+# generated file is produced on the SOURCE branch needs it to merge forward like any other file.
+GENERATED_PATHS="${GENERATED_PATHS-README.md}"
 
 case "$MODE" in
   merge | overwrite) ;;
