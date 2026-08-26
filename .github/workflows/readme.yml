@@ -69,7 +69,6 @@ jobs:
           repository: ${{ inputs.repository }}
           tag: ${{ inputs.tag }}
           default_branch: ${{ inputs.default_branch }}
-          node_version: ${{ inputs.node_version }}
           token: ${{ secrets.envPAT || github.token }}
 
       - name: Setup Node.js

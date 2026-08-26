@@ -19,10 +19,6 @@ inputs:
     description: File to write
     required: false
     default: 'README.md'
-  node_version:
-    description: Node.js version the generator runs on
-    required: false
-    default: '24'
   token:
     description: Token for the GitHub API lookups; without one the API is rate limited by IP
     required: false
@@ -31,10 +27,11 @@ inputs:
 runs:
   using: composite
   steps:
+    # Pinned, not an input: Node runs the TypeScript directly and only 24 and above can.
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ inputs.node_version }}
+        node-version: '24'
 
     # Node runs the TypeScript directly, so there is no build step and nothing to install.
     - name: Generate
