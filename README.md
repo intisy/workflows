@@ -116,6 +116,23 @@ The caller owns the schedule, since how often a service is worth checking is its
 `cache_bust` (on by default) appends a unique query parameter so no intermediary can serve a stale
 healthy response.
 
+## Gradle wrapper validation
+
+Every workflow here that runs `./gradlew` first checks each committed `gradle-wrapper.jar` against
+Gradle's published checksums, using `.github/actions/validate-gradle-wrapper`. The wrapper is an
+executable binary that a build runs before any of the repository's own code, so a tampered one gets
+arbitrary code execution in a job that may hold publishing credentials, and a diff review does not
+catch it.
+
+The check runs before the wrapper is made executable or invoked, since validating one after running
+it proves nothing. A repository with no wrapper jar is skipped quietly rather than failed, so a
+build that uses a system gradle is unaffected.
+
+A failure means the jar does not match any Gradle release. That is either a corrupt or hand-edited
+wrapper, in which case regenerate it with `./gradlew wrapper --gradle-version <version>`, or a
+wrapper built from source, in which case pass its checksum through `allow-checksums`. Set
+`validate_wrapper: false` on the caller to opt out, and expect to justify it.
+
 ## Branch names
 
 A caller's own `on: push: branches:` trigger is the only place a branch name may be written
