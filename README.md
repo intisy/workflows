@@ -90,6 +90,32 @@ prints the whole table with the current repository's values in it.
 The generator's own tests run offline, with no network and no third-party package:
 `python3 -m unittest discover -s .github/scripts -t .github/scripts`.
 
+## Deploying and monitoring a service
+
+`deploy-cloudflare.yml` publishes a Cloudflare Worker. `checks` is a newline separated list of
+commands run in order first, so a version that cannot pass its own checks never reaches
+Cloudflare, and a failing check stops the list rather than continuing to the next one. Deploying
+from a developer machine needs no credential at all, because `wrangler login` holds an OAuth
+session there; CI has no browser, so it needs `CLOUDFLARE_API_TOKEN`, and an empty one is reported
+by name instead of reaching wrangler as an opaque auth failure. `CLOUDFLARE_ACCOUNT_ID` is a secret
+rather than a committed value so the account id stays out of a public repository.
+
+`monitor.yml` turns a health endpoint into a notification: a service that reports its own status
+cannot push that anywhere, so the run fails and GitHub emails the repository owner.
+`unhealthy_jq` is a jq expression over the response body returning a string, where non-empty means
+unhealthy; leave it empty to assert only that the request succeeded. Two behaviours matter more
+than they look:
+
+- An empty `url`, or a missing token while `require_token` is set, **skips and passes**. A fork
+  that has deployed nothing is not permanently red.
+- A `unhealthy_jq` that cannot be evaluated **fails**. Silently reporting healthy is the one
+  outcome a monitor must never produce, so a malformed expression or an unexpected body is an
+  error rather than a pass.
+
+The caller owns the schedule, since how often a service is worth checking is its own business.
+`cache_bust` (on by default) appends a unique query parameter so no intermediary can serve a stale
+healthy response.
+
 ## Branch names
 
 A caller's own `on: push: branches:` trigger is the only place a branch name may be written
