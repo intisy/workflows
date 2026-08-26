@@ -133,6 +133,26 @@ wrapper, in which case regenerate it with `./gradlew wrapper --gradle-version <v
 wrapper built from source, in which case pass its checksum through `allow-checksums`. Set
 `validate_wrapper: false` on the caller to opt out, and expect to justify it.
 
+## Reusable workflows and this repository's own
+
+Every file in `.github/workflows/` here is a reusable workflow that other repositories call,
+**unless its name starts with `self-`**. A `self-` file is this repository's own CI: it declares no
+`workflow_call`, nothing outside can reach it, and it exists only to test or document this
+repository. Its display name is prefixed `Self:` so the two are also distinguishable in the Actions
+run list, which shows names rather than filenames.
+
+The convention exists because the alternative was tried. `tests.yml` sat next to `test.yml` with no
+hint that one was callable and one was not, and `generate-readme.yml` carried the same display name
+as the reusable `readme.yml`, making them impossible to tell apart in the UI.
+
+The two cannot simply be folded into one file each. A reusable workflow cannot reliably trigger
+itself: `workflow_call` inputs are unpopulated when the same workflow runs on `push`, so
+`test.yml`'s `run: ${{ inputs.node_test }}` would execute nothing, and under `workflow_call`
+`github.event_name` reports the caller's event, so the two paths cannot be told apart from inside.
+
+A consumer repository's thin caller is a third thing again, named for what it does in that
+repository (`ci.yml`, `readme.yml`), and lives there rather than here.
+
 ## Branch names
 
 A caller's own `on: push: branches:` trigger is the only place a branch name may be written
