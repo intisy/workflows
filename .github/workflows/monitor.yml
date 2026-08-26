@@ -1,0 +1,123 @@
+name: Monitor
+
+# A deployed service that reports its own health on an endpoint has no way to push that anywhere.
+# This turns a pull-only endpoint into a notification: the run fails, and GitHub emails the repo
+# owner. The caller owns the schedule, since how often a service is worth checking is its own
+# business.
+
+on:
+  workflow_call:
+    inputs:
+      url:
+        description: >-
+          Base URL of the service. Empty skips the whole check and passes, so a fork that has not
+          deployed anything is not permanently red.
+        required: false
+        type: string
+        default: ''
+      path:
+        description: 'Path appended to url'
+        required: false
+        type: string
+        default: '/status'
+      unhealthy_jq:
+        description: >-
+          jq expression over the response body returning a string: non-empty means unhealthy and
+          fails the run, empty means healthy. Leave empty to check only that the request succeeded.
+        required: false
+        type: string
+        default: ''
+      auth_scheme:
+        description: 'Authorization scheme prefixed to the token; empty sends the token bare'
+        required: false
+        type: string
+        default: 'Bearer'
+      require_token:
+        description: >-
+          Skip and pass when no token is set, rather than probing unauthenticated. Set false for a
+          genuinely public endpoint.
+        required: false
+        type: boolean
+        default: true
+      cache_bust:
+        description: >-
+          Append a unique query parameter. A stale intermediary must never be able to report a
+          service healthy, whatever the endpoint sets on Cache-Control.
+        required: false
+        type: boolean
+        default: true
+      timeout_minutes:
+        required: false
+        type: number
+        default: 10
+    secrets:
+      token:
+        description: 'Credential the endpoint requires; see require_token'
+        required: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Check service health
+        env:
+          URL: ${{ inputs.url }}
+          PATH_SUFFIX: ${{ inputs.path }}
+          UNHEALTHY_JQ: ${{ inputs.unhealthy_jq }}
+          AUTH_SCHEME: ${{ inputs.auth_scheme }}
+          REQUIRE_TOKEN: ${{ inputs.require_token }}
+          CACHE_BUST: ${{ inputs.cache_bust }}
+          TOKEN: ${{ secrets.token }}
+        run: |
+          set -eu
+
+          if [ -z "$URL" ]; then
+            echo "No url configured; skipping."
+            exit 0
+          fi
+          if [ "$REQUIRE_TOKEN" = "true" ] && [ -z "$TOKEN" ]; then
+            echo "No token configured; skipping."
+            exit 0
+          fi
+
+          target="${URL%/}${PATH_SUFFIX}"
+          if [ "$CACHE_BUST" = "true" ]; then
+            case "$target" in
+              *\?*) target="${target}&monitor=${GITHUB_RUN_ID}" ;;
+              *) target="${target}?monitor=${GITHUB_RUN_ID}" ;;
+            esac
+          fi
+
+          set -- curl -sS --fail-with-body --max-time 30
+          if [ -n "$TOKEN" ]; then
+            if [ -n "$AUTH_SCHEME" ]; then
+              set -- "$@" -H "Authorization: ${AUTH_SCHEME} ${TOKEN}"
+            else
+              set -- "$@" -H "Authorization: ${TOKEN}"
+            fi
+          fi
+
+          body=$("$@" "$target")
+
+          if [ -z "$UNHEALTHY_JQ" ]; then
+            echo "$body"
+            echo "Request succeeded and no unhealthy_jq was given; treating as healthy."
+            exit 0
+          fi
+
+          echo "$body" | jq .
+
+          # A malformed expression or an unexpected body must fail loudly: silently reporting
+          # healthy is the one outcome a monitor must never produce.
+          if ! unhealthy=$(printf '%s' "$body" | jq -r "$UNHEALTHY_JQ"); then
+            echo "::error::unhealthy_jq could not be evaluated against the response."
+            exit 1
+          fi
+
+          if [ -n "$unhealthy" ] && [ "$unhealthy" != "null" ]; then
+            echo "::error::Unhealthy: $unhealthy"
+            exit 1
+          fi
+
+          echo "Healthy."
