@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: ''
+      validate_wrapper:
+        description: 'Check every committed gradle-wrapper.jar against Gradle published checksums before any gradle command runs; false skips it'
+        required: false
+        type: boolean
+        default: true
       jar_pretest_task:
         description: 'Gradle task to run before the jar publish, e.g. "claude-code-proxy-plugin:test"; empty to skip'
         required: false
@@ -165,6 +170,14 @@ jobs:
           else
             echo "dir=java" >> "$GITHUB_OUTPUT"
           fi
+
+      # Before the wrapper is made executable or invoked, since validating one after running it
+      # proves nothing. Quiet when the repository has no wrapper jar at all.
+      - name: Validate the gradle wrapper
+        if: ${{ inputs.jar_module != '' }}
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
 
       - name: Grant execute permission for gradlew
         if: ${{ inputs.jar_module != '' }}

@@ -1,0 +1,53 @@
+name: Validate the gradle wrapper
+description: >-
+  Checks every committed gradle-wrapper.jar against Gradle's published checksums, so a tampered
+  wrapper cannot execute arbitrary code in a workflow that holds credentials.
+
+inputs:
+  enabled:
+    description: The literal false skips validation entirely; for a repository whose wrapper legitimately fails
+    required: false
+    default: 'true'
+  allow-snapshots:
+    description: Accept snapshot Gradle distributions, which have no published checksum
+    required: false
+    default: 'false'
+  allow-checksums:
+    description: Comma separated extra SHA-256 checksums to accept, for a wrapper built from source
+    required: false
+    default: ''
+
+outputs:
+  validated:
+    description: Non-empty when wrapper jars were found and checked
+    value: ${{ steps.find.outputs.found }}
+
+runs:
+  using: composite
+  steps:
+    # gradle/actions/wrapper-validation defaults to min-wrapper-count 1 and so fails a repository
+    # that has no wrapper at all, which is legitimate when the build runs on a system gradle.
+    # Detecting first keeps that case quiet while still failing loudly on a wrapper that is present
+    # and wrong. The search deliberately spans the whole workspace rather than the gradle root,
+    # because the validation step itself does, and a narrower search here could skip a wrapper the
+    # build later executes.
+    - name: Find gradle wrapper jars
+      id: find
+      if: ${{ inputs.enabled != 'false' }}
+      shell: bash
+      run: |
+        count=$(find . -name gradle-wrapper.jar -not -path './.git/*' | wc -l)
+        if [ "$count" -gt 0 ]; then
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          echo "Validating $count gradle wrapper jar(s)."
+        else
+          echo "found=" >> "$GITHUB_OUTPUT"
+          echo "::notice::No gradle-wrapper.jar found, nothing to validate."
+        fi
+
+    - name: Validate against the published checksums
+      if: ${{ steps.find.outputs.found != '' }}
+      uses: gradle/actions/wrapper-validation@v4
+      with:
+        allow-snapshots: ${{ inputs.allow-snapshots }}
+        allow-checksums: ${{ inputs.allow-checksums }}

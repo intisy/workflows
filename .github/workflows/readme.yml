@@ -33,6 +33,11 @@ on:
         required: false
         type: string
         default: '20'
+      validate_wrapper:
+        description: 'Check every committed gradle-wrapper.jar against Gradle published checksums before the generator can invoke one; false skips it'
+        required: false
+        type: boolean
+        default: true
       commit_message:
         description: 'Commit message for the generated README'
         required: false
@@ -110,6 +115,14 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      # The generator shells out to the wrapper to read a version, which is why a JDK is installed
+      # and the wrapper made executable above. Validate before it can be run.
+      - name: Validate the gradle wrapper
+        if: ${{ steps.select.outputs.generator == 'npm' && steps.detect.outputs.gradle_root != '' }}
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
 
       - name: Grant execute permission for gradlew
         if: ${{ steps.select.outputs.generator == 'npm' && steps.detect.outputs.gradle_root != '' }}

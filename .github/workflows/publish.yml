@@ -75,6 +75,11 @@ on:
         required: false
         type: string
         default: '8u372+7'
+      validate_wrapper:
+        description: 'Check every committed gradle-wrapper.jar against Gradle published checksums before any gradle command runs; false skips it'
+        required: false
+        type: boolean
+        default: true
       gradle_build:
         required: false
         type: string
@@ -288,6 +293,14 @@ jobs:
         with:
           java-version: ${{ inputs.java_version }}
           distribution: ${{ inputs.jdk_distribution }}
+
+      # Before the wrapper is made executable or invoked, since validating one after running it
+      # proves nothing. Quiet when the repository has no wrapper jar at all.
+      - name: Validate the gradle wrapper
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
 
       - name: Grant execute permission for gradlew
         if: ${{ steps.detect.outputs.gradle != '' }}

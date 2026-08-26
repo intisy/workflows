@@ -58,6 +58,11 @@ on:
         required: false
         type: string
         default: '8u372+7'
+      validate_wrapper:
+        description: 'Check every committed gradle-wrapper.jar against Gradle published checksums before any gradle command runs; false skips it'
+        required: false
+        type: boolean
+        default: true
       gradle_pretest:
         description: 'Gradle task run before the tests, for fixtures the tests need installed'
         required: false
@@ -209,6 +214,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python_version }}
+
+      # Before the wrapper is made executable or invoked, since validating one after running it
+      # proves nothing. Quiet when the repository has no wrapper jar at all.
+      - name: Validate the gradle wrapper
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
 
       # Git Bash resolves the executable bit itself on Windows, so the chmod is only needed elsewhere.
       - name: Grant execute permission for gradlew
