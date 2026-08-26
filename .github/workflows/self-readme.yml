@@ -1,4 +1,5 @@
-name: Generate README
+# This repository's own README run, not the reusable workflow. See self-test.yml.
+name: "Self: readme"
 
 on:
   workflow_dispatch:
