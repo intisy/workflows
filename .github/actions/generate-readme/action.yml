@@ -1,0 +1,49 @@
+name: Generate README
+description: >-
+  Renders README.md from .github/docs-config.yml plus CONTENT.md, for a repository that documents
+  itself with a docs config rather than a defineReadme() spec.
+
+inputs:
+  repository:
+    description: owner/name of the repository being documented
+    required: true
+  tag:
+    description: Release tag to document; empty looks up the latest matching tag
+    required: false
+    default: ''
+  default_branch:
+    description: Branch the README is generated on; empty looks it up through the API
+    required: false
+    default: ''
+  output:
+    description: File to write
+    required: false
+    default: 'README.md'
+  node_version:
+    description: Node.js version the generator runs on
+    required: false
+    default: '24'
+  token:
+    description: Token for the GitHub API lookups; without one the API is rate limited by IP
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+
+    # Node runs the TypeScript directly, so there is no build step and nothing to install.
+    - name: Generate
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.token }}
+        README_TAG: ${{ inputs.tag }}
+        README_DEFAULT_BRANCH: ${{ inputs.default_branch }}
+      run: |
+        node "${{ github.action_path }}/generate-readme.ts" \
+          --repository "${{ inputs.repository }}" \
+          --output "${{ inputs.output }}"

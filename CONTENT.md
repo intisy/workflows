@@ -83,8 +83,8 @@ Every setting in `docs-config.yml` is a placeholder under its own name (`\{{ jav
 `python3 .github/scripts/generate-readme.py --repository owner/name --offline --placeholders`
 prints the whole table with the current repository's values in it.
 
-The generator's own tests run offline, with no network and no third-party package:
-`python3 -m unittest discover -s .github/scripts -t .github/scripts`.
+The generator is TypeScript that Node runs directly, with no build step and no dependency.
+Its own tests run offline, with no network: `npm test`.
 
 ## Deploying and monitoring a service
 

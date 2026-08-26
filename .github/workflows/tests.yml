@@ -5,11 +5,9 @@ on:
   push:
     paths:
       - '.github/actions/**'
-      - '.github/scripts/**'
   pull_request:
     paths:
       - '.github/actions/**'
-      - '.github/scripts/**'
 
 jobs:
   actions:
@@ -17,6 +15,3 @@ jobs:
     with:
       toolchains: node
       node_build: ''
-
-  scripts:
-    uses: ./.github/workflows/python-tests.yml

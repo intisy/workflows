@@ -18,16 +18,6 @@ on:
         required: false
         type: string
         default: ''
-      generator_repository:
-        description: 'owner/name of the repository hosting the README generator script'
-        required: false
-        type: string
-        default: 'intisy/workflows'
-      workflows_ref:
-        description: 'Ref of the generator repository to take the script from'
-        required: false
-        type: string
-        default: ''
       node_version:
         description: 'Node.js version used by the npm generator'
         required: false
@@ -64,7 +54,7 @@ jobs:
         id: select
         run: |
           if [ -f .github/docs-config.yml ]; then
-            echo "generator=python" >> "$GITHUB_OUTPUT"
+            echo "generator=docs-config" >> "$GITHUB_OUTPUT"
           elif [ -f package.json ]; then
             echo "generator=npm" >> "$GITHUB_OUTPUT"
           else
@@ -72,29 +62,15 @@ jobs:
             exit 1
           fi
 
-      - name: Fetch the shared generator
-        if: steps.select.outputs.generator == 'python'
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.generator_repository }}
-          ref: ${{ inputs.workflows_ref }}
-          path: .readme-generator
-
-      - name: Setup Python
-        if: steps.select.outputs.generator == 'python'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
       - name: Generate README.md from docs-config.yml
-        if: steps.select.outputs.generator == 'python'
-        env:
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          README_TAG: ${{ inputs.tag }}
-          README_DEFAULT_BRANCH: ${{ inputs.default_branch }}
-        run: |
-          python3 .readme-generator/.github/scripts/generate-readme.py --repository "${{ inputs.repository }}"
-          rm -rf .readme-generator
+        if: steps.select.outputs.generator == 'docs-config'
+        uses: intisy/workflows/.github/actions/generate-readme@main
+        with:
+          repository: ${{ inputs.repository }}
+          tag: ${{ inputs.tag }}
+          default_branch: ${{ inputs.default_branch }}
+          node_version: ${{ inputs.node_version }}
+          token: ${{ secrets.envPAT || github.token }}
 
       - name: Setup Node.js
         if: steps.select.outputs.generator == 'npm'
