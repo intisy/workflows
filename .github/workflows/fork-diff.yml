@@ -1,0 +1,119 @@
+name: Fork diff
+
+# Holds a renamed derivative of an upstream project honest about what it changed.
+#
+# The modification notices ARE the declaration, so there is no second list to fall out of date: a
+# changed file must carry the marker, and a file carrying the marker must actually be changed.
+# Additions are not gated because they cannot alter upstream behaviour. Deletions cannot carry a
+# notice, so they are the one thing that needs declaring by hand, and that list stays short.
+
+on:
+  workflow_call:
+    inputs:
+      baseline_ref:
+        description: 'Ref holding the unmodified upstream tree, normally a tag in this repository so the gate needs no network'
+        required: true
+        type: string
+      marker:
+        description: 'Substring every modified file must carry, which is the Apache-2.0 section 4b modification notice'
+        required: true
+        type: string
+      allow_deleted:
+        description: 'Newline separated paths this fork deletes from upstream; any other deletion fails the run'
+        required: false
+        type: string
+        default: ''
+      exclude:
+        description: 'Newline separated paths exempt from needing a marker, for files whose format admits no comment'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        required: false
+        type: number
+        default: 10
+
+jobs:
+  fork-diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      # Full history: the baseline is a ref in this repository and a shallow clone cannot reach it.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the baseline exists
+        run: |
+          if ! git rev-parse --verify --quiet "${{ inputs.baseline_ref }}^{commit}" > /dev/null; then
+            echo "::error::Baseline ref '${{ inputs.baseline_ref }}' does not exist in this repository."
+            exit 1
+          fi
+
+      - name: Compare against the baseline
+        env:
+          BASELINE: ${{ inputs.baseline_ref }}
+          MARKER: ${{ inputs.marker }}
+          ALLOW_DELETED: ${{ inputs.allow_deleted }}
+          EXCLUDE: ${{ inputs.exclude }}
+        run: |
+          set -uo pipefail
+          failed=0
+
+          normalise() { grep -v '^[[:space:]]*$' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sort -u; }
+          printf '%s\n' "$ALLOW_DELETED" | normalise > /tmp/allow-deleted.txt
+          printf '%s\n' "$EXCLUDE"       | normalise > /tmp/exclude.txt
+
+          git diff --diff-filter=M --name-only "$BASELINE" HEAD | sort -u > /tmp/modified.txt
+          git diff --diff-filter=D --name-only "$BASELINE" HEAD | sort -u > /tmp/deleted.txt
+
+          echo "Modified: $(wc -l < /tmp/modified.txt), deleted: $(wc -l < /tmp/deleted.txt)"
+
+          echo "::group::Modified files missing the modification notice"
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if grep -qxF "$path" /tmp/exclude.txt; then
+              continue
+            fi
+            if ! grep -qF "$MARKER" "$path" 2>/dev/null; then
+              echo "::error file=$path::Modified relative to $BASELINE but carries no modification notice."
+              failed=1
+            fi
+          done < /tmp/modified.txt
+          echo "::endgroup::"
+
+          echo "::group::Undeclared deletions"
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if ! grep -qxF "$path" /tmp/allow-deleted.txt; then
+              echo "::error file=$path::Deleted relative to $BASELINE but not listed in allow_deleted."
+              failed=1
+            fi
+          done < /tmp/deleted.txt
+          echo "::endgroup::"
+
+          # A notice on a file that no longer differs is the mirror-image failure: it claims a change
+          # that a later merge from upstream may have taken away.
+          #
+          # Only files the baseline already contained can be stale this way. A file this fork ADDED
+          # may legitimately contain the marker without modifying anything: the caller workflow that
+          # configures this gate contains it as an input value, which is how this check first failed.
+          echo "::group::Stale modification notices"
+          git ls-tree -r --name-only "$BASELINE" | sort -u > /tmp/baseline-files.txt
+          git grep -l --fixed-strings "$MARKER" -- . | sort -u > /tmp/marked.txt || true
+          comm -12 /tmp/marked.txt /tmp/baseline-files.txt > /tmp/marked-vendored.txt
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if ! grep -qxF "$path" /tmp/modified.txt; then
+              echo "::error file=$path::Carries a modification notice but does not differ from $BASELINE."
+              failed=1
+            fi
+          done < /tmp/marked-vendored.txt
+          echo "::endgroup::"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::Fork diff gate failed. Either the change is undeclared, or the declaration is stale."
+            exit 1
+          fi
+          echo "Fork diff gate passed."
