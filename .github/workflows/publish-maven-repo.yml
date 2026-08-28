@@ -1,0 +1,158 @@
+name: Publish Maven repository
+
+# Publishes a Gradle project's artifacts as a static Maven repository on a Pages branch.
+#
+# This exists for the one thing a release-asset resolver cannot serve: a Gradle PLUGIN MARKER.
+# `plugins { id "..." }` resolves through pluginManagement repositories, which must speak the Maven
+# layout over HTTP, so a repo publishing a Gradle plugin needs a real repository rather than an
+# attached release asset.
+#
+# The Pages branch is rewritten as a SINGLE ORPHAN COMMIT each run, after merging in whatever it
+# already held. Previous versions stay resolvable, and the branch never accumulates history, which
+# matters because a Maven repository of jars is large and git keeps every blob forever.
+
+on:
+  workflow_call:
+    inputs:
+      gradle_task:
+        description: 'Task that writes the Maven layout into staging_dir'
+        required: true
+        type: string
+      staging_dir:
+        description: 'Directory the gradle task writes the Maven layout to, relative to the repository root'
+        required: false
+        type: string
+        default: 'build/staging-deploy'
+      gradle_args:
+        description: 'Appended to the gradle invocation'
+        required: false
+        type: string
+        default: ''
+      version:
+        description: 'Version to publish; a leading v is stripped, so a release tag can be passed straight in'
+        required: false
+        type: string
+        default: ''
+      version_property:
+        description: 'Gradle property the version is passed as; ignored when version is empty'
+        required: false
+        type: string
+        default: 'version'
+      pages_branch:
+        required: false
+        type: string
+        default: 'gh-pages'
+      subdirectory:
+        description: 'Path within the Pages branch to serve the repository from; empty serves it at the root'
+        required: false
+        type: string
+        default: 'maven'
+      java_version:
+        required: false
+        type: string
+        default: '17'
+      jdk_distribution:
+        required: false
+        type: string
+        default: 'temurin'
+      validate_wrapper:
+        description: 'Check the committed gradle-wrapper.jar against Gradle published checksums before running it'
+        required: false
+        type: boolean
+        default: true
+      timeout_minutes:
+        required: false
+        type: number
+        default: 60
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
+
+      - name: Validate the gradle wrapper
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # A release tag is normally `v1.2.3` while the version is `1.2.3`, and GitHub expressions
+      # cannot strip the prefix, so it is done here rather than in every caller.
+      - name: Resolve the version
+        id: version
+        env:
+          RAW: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RAW" ]; then
+            echo "arg=-P${{ inputs.version_property }}=${RAW#v}" >> "$GITHUB_OUTPUT"
+            echo "Publishing version ${RAW#v}."
+          else
+            echo "arg=" >> "$GITHUB_OUTPUT"
+            echo "No version given; the build decides its own."
+          fi
+
+      - name: Stage the Maven layout
+        run: ./gradlew ${{ inputs.gradle_task }} ${{ steps.version.outputs.arg }} ${{ inputs.gradle_args }}
+
+      - name: Check the staging directory has content
+        run: |
+          if [ ! -d "${{ inputs.staging_dir }}" ] || [ -z "$(ls -A "${{ inputs.staging_dir }}" 2>/dev/null)" ]; then
+            echo "::error::'${{ inputs.gradle_task }}' produced nothing in '${{ inputs.staging_dir }}'."
+            exit 1
+          fi
+          echo "Staged $(find "${{ inputs.staging_dir }}" -type f | wc -l) files."
+
+      - name: Deploy to the Pages branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STAGING: ${{ inputs.staging_dir }}
+          PAGES_BRANCH: ${{ inputs.pages_branch }}
+          SUBDIR: ${{ inputs.subdirectory }}
+        run: |
+          set -euo pipefail
+          staged="$(pwd)/$STAGING"
+          work=$(mktemp -d)
+          cd "$work"
+          git init -q
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          # Take whatever the branch already holds, so previously published versions survive. Depth 1
+          # is enough: the branch is rewritten as one commit and has no history worth fetching.
+          if git fetch -q --depth 1 origin "$PAGES_BRANCH" 2>/dev/null; then
+            git checkout -q FETCH_HEAD -- .
+            echo "Merging into the existing $PAGES_BRANCH."
+          else
+            echo "$PAGES_BRANCH does not exist yet; creating it."
+          fi
+
+          target="$work${SUBDIR:+/$SUBDIR}"
+          mkdir -p "$target"
+          cp -r "$staged/." "$target/"
+          # Pages runs Jekyll otherwise, which silently drops paths it considers special.
+          touch "$work/.nojekyll"
+
+          git checkout -q --orphan deploy
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Nothing changed; not publishing."
+            exit 0
+          fi
+          git -c user.name=github-actions[bot] \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Publish Maven repository from ${GITHUB_SHA}"
+          git push -f -q origin "deploy:$PAGES_BRANCH"
+          echo "Published to $PAGES_BRANCH${SUBDIR:+/$SUBDIR}."
