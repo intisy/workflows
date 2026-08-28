@@ -58,6 +58,10 @@ jobs:
           ALLOW_DELETED: ${{ inputs.allow_deleted }}
           EXCLUDE: ${{ inputs.exclude }}
         run: |
+          # errexit off deliberately: this script reports every problem it finds and exits once at
+          # the end. GitHub runs step scripts under `bash -e`, where a grep that legitimately matches
+          # nothing (an empty exclude list) would otherwise kill the run before any check ran.
+          set +e
           set -uo pipefail
           failed=0
 
