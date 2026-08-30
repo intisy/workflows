@@ -117,12 +117,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      # Turns Pages on for a repo that has never published, so a new consumer needs no
-      # manual setting: deploy-pages fails outright against a repo with no Pages site, and a
-      # caller cannot fix that from its own workflow.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
+      # Pages must be enabled ONCE per repo before this job can ever succeed, because deploy-pages
+      # fails outright against a repo that has no Pages site. It cannot be done from here:
+      # actions/configure-pages@v5 with enablement:true answers "Resource not accessible by
+      # integration" on the create call, since GITHUB_TOKEN may not create a site however the job's
+      # permissions are written (measured on intisy/bayonet, 2026-08-30). Run this once, with a
+      # token that can:
+      #   gh api -X POST repos/<owner>/<repo>/pages -f build_type=workflow
       - id: deployment
         uses: actions/deploy-pages@v4
