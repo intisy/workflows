@@ -126,6 +126,11 @@ on:
         required: false
         type: string
         default: ''
+      apt_packages:
+        description: 'Space-separated apt packages installed before the toolchain steps, for a build needing system headers a runner image ships without. Runs on Linux runners only, so a macOS or Windows runner in the same matrix needs nothing set.'
+        required: false
+        type: string
+        default: ''
     secrets:
       envPAT:
         description: 'Token used for checkouts and builds; falls back to the job token'
@@ -163,6 +168,13 @@ jobs:
           path: ${{ inputs.extra_path }}
           submodules: recursive
           token: ${{ secrets.envPAT || github.token }}
+
+      - name: Install apt packages
+        if: ${{ inputs.apt_packages != '' && runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt_packages }}
 
       - name: Detect toolchains
         id: detect
