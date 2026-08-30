@@ -117,5 +117,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # Turns Pages on for a repo that has never published, so a new consumer needs no
+      # manual setting: deploy-pages fails outright against a repo with no Pages site, and a
+      # caller cannot fix that from its own workflow.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - id: deployment
         uses: actions/deploy-pages@v4
