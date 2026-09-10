@@ -1,15 +1,19 @@
-name: Promote to Main
+name: Merge
 
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - development
+
 permissions:
   contents: write
+
 jobs:
   merge:
     uses: intisy/workflows/.github/workflows/merge.yml@main
     with:
-      source: experimental
+      source: development
       target: main
       sync_back: true
+      generated_paths: README.md
