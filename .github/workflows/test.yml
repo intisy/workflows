@@ -131,6 +131,20 @@ on:
         required: false
         type: string
         default: ''
+      token_broker:
+        description: >-
+          URL of a service that exchanges this job's GitHub OIDC token for a build credential, for a
+          repository whose dependencies live somewhere the job token cannot reach. Empty disables it,
+          which is what every caller that does not need one leaves it as. The caller must grant
+          `permissions: id-token: write`, or the job has no OIDC token to exchange.
+        required: false
+        type: string
+        default: ''
+      token_broker_audience:
+        description: 'Audience the OIDC token is minted for; required when token_broker is set, since a broker that accepts any audience accepts a token minted for something else'
+        required: false
+        type: string
+        default: ''
     secrets:
       envPAT:
         description: 'Token used for checkouts and builds; falls back to the job token'
@@ -175,6 +189,49 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ inputs.apt_packages }}
+
+      - name: Exchange an OIDC token for the build credential
+        if: ${{ inputs.token_broker != '' }}
+        shell: bash
+        env:
+          BROKER: ${{ inputs.token_broker }}
+          AUDIENCE: ${{ inputs.token_broker_audience }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AUDIENCE" ]; then
+            echo "::error::token_broker is set but token_broker_audience is empty. A broker that accepts any audience accepts a token minted for another service."
+            exit 1
+          fi
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::token_broker is set but this job was given no OIDC token. Add 'permissions: id-token: write' to the calling workflow."
+            exit 1
+          fi
+
+          oidc=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUDIENCE}" | jq -r '.value')
+          if [ -z "$oidc" ] || [ "$oidc" = "null" ]; then
+            echo "::error::GitHub returned no OIDC token."
+            exit 1
+          fi
+          echo "::add-mask::$oidc"
+
+          # Outside the workspace: a credential written into the checkout is one a build can pick up
+          # or a commit can carry.
+          body="$RUNNER_TEMP/token-broker.json"
+          status=$(curl -sS -o "$body" -w '%{http_code}' -X POST -H "Authorization: Bearer $oidc" "$BROKER")
+          if [ "$status" != "200" ]; then
+            rm -f "$body"
+            echo "::error::the token broker refused this job (HTTP $status)."
+            exit 1
+          fi
+          token=$(jq -r '.token // empty' "$body")
+          rm -f "$body"
+          if [ -z "$token" ]; then
+            echo "::error::the token broker answered 200 with no token."
+            exit 1
+          fi
+          # Masked before it reaches the environment, so no later step can print it.
+          echo "::add-mask::$token"
+          echo "BROKER_TOKEN=$token" >> "$GITHUB_ENV"
 
       - name: Detect toolchains
         id: detect
@@ -248,8 +305,8 @@ jobs:
         run: ${{ inputs.node_install }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
 
       - name: Build with node
         if: ${{ steps.detect.outputs.node != '' && inputs.node_build != '' }}
@@ -257,8 +314,8 @@ jobs:
         run: ${{ inputs.node_build }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
 
       - name: Test with node
         if: ${{ steps.detect.outputs.node != '' }}
@@ -272,8 +329,8 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_pretest }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
 
       - name: Test with gradle
         if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_test != '' }}
@@ -282,8 +339,8 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
 
       - name: Test with maven
         if: ${{ steps.detect.outputs.maven != '' && inputs.maven_test != '' }}
@@ -291,8 +348,8 @@ jobs:
         run: mvn --batch-mode ${{ inputs.maven_test }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
 
       - name: Test with python
         if: ${{ steps.detect.outputs.python != '' }}
