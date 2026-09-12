@@ -40,10 +40,10 @@ on:
         description: 'Token used for checkout; falls back to the job token'
         required: false
       crawl_tokens:
-        description: 'Comma separated crawl tokens, exposed to the run as MS_CRAWL_TOKENS'
+        description: 'Comma separated crawl tokens, exposed to the run as MS_GITHUB_CRAWL_TOKENS'
         required: false
       store_token:
-        description: 'Repo scoped token for the results artifact, exposed to the run as MS_STORE_TOKEN'
+        description: 'Repo scoped token for the results artifact, exposed to the run as MS_GITHUB_STORE_TOKEN'
         required: false
 
 jobs:
@@ -114,5 +114,5 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_task }} ${{ inputs.gradle_args }}
         env:
           GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
-          MS_CRAWL_TOKENS: ${{ secrets.crawl_tokens }}
-          MS_STORE_TOKEN: ${{ secrets.store_token }}
+          MS_GITHUB_CRAWL_TOKENS: ${{ secrets.crawl_tokens }}
+          MS_GITHUB_STORE_TOKEN: ${{ secrets.store_token }}
