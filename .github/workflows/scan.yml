@@ -1,0 +1,118 @@
+name: Scan
+
+on:
+  workflow_call:
+    inputs:
+      gradle_task:
+        description: 'Gradle task the scan runs, for example :provide:run'
+        required: true
+        type: string
+      gradle_args:
+        description: 'Appended to the gradle invocation, for example --no-daemon'
+        required: false
+        type: string
+        default: ''
+      java_version:
+        required: false
+        type: string
+        default: '21'
+      jdk_distribution:
+        required: false
+        type: string
+        default: 'temurin'
+      probability:
+        description: 'Chance a scheduled run proceeds, as numerator/denominator like 2/7; empty always runs. Manual and non-schedule events ignore it.'
+        required: false
+        type: string
+        default: ''
+      validate_wrapper:
+        description: 'Check every committed gradle-wrapper.jar against Gradle published checksums before gradlew runs'
+        required: false
+        type: boolean
+        default: true
+      ref:
+        description: 'Ref to scan; empty uses the ref the run started from'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      envPAT:
+        description: 'Token used for checkout; falls back to the job token'
+        required: false
+      crawl_tokens:
+        description: 'Comma separated crawl tokens, exposed to the run as MS_CRAWL_TOKENS'
+        required: false
+      store_token:
+        description: 'Repo scoped token for the results artifact, exposed to the run as MS_STORE_TOKEN'
+        required: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Roll the probability gate
+        id: decide
+        shell: bash
+        env:
+          PROB: ${{ inputs.probability }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "schedule" ] || [ -z "$PROB" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          num=${PROB%%/*}
+          den=${PROB##*/}
+          if [ $((RANDOM % den)) -lt "$num" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  scan:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Validate the gradle wrapper
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+        with:
+          enabled: ${{ inputs.validate_wrapper }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
+
+      - name: Grant execute permission for gradlew
+        if: runner.os != 'Windows'
+        shell: bash
+        run: chmod +x gradlew
+
+      # Only non-secret configuration is forwarded in bulk; secrets are passed straight to the run
+      # step below, never written to GITHUB_ENV where a later step could read them.
+      - name: Forward caller variables into the run env
+        shell: bash
+        env:
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          echo "$VARS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
+
+      - name: Run the scan
+        shell: bash
+        run: ./gradlew ${{ inputs.gradle_task }} ${{ inputs.gradle_args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          MS_CRAWL_TOKENS: ${{ secrets.crawl_tokens }}
+          MS_STORE_TOKEN: ${{ secrets.store_token }}
