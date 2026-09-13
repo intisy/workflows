@@ -1,2 +1,8 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# multiscrape provider adapters run on Linux runners; force LF so bash does not choke on CR
+/select-order        text eol=lf
+/test-select-order   text eol=lf
+/providers/*.sh      text eol=lf
+/.github/workflows/multiscrape-run.yml text eol=lf

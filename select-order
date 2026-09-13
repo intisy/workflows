@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+raw="${1:-}"
+run_number="${2:-0}"
+
+providers=()
+IFS=',' read -r -a parts <<< "$raw"
+for part in "${parts[@]:-}"; do
+  trimmed="$(printf '%s' "$part" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  if [ -n "$trimmed" ]; then
+    providers+=("$trimmed")
+  fi
+done
+
+count=${#providers[@]}
+if [ "$count" -eq 0 ]; then
+  exit 0
+fi
+
+start=$(( run_number % count ))
+for (( k = 0; k < count; k++ )); do
+  idx=$(( (start + k) % count ))
+  printf '%s\n' "${providers[$idx]}"
+done

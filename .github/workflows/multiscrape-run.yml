@@ -1,0 +1,92 @@
+name: multiscrape-run
+
+on:
+  workflow_call:
+    inputs:
+      ms_github_release_tag:
+        required: true
+        type: string
+      ms_github_asset:
+        required: true
+        type: string
+      ms_max_minutes:
+        required: false
+        type: string
+        default: "55"
+      cloud_run_job:
+        required: false
+        type: string
+        default: multiscrape
+      workflows_ref:
+        required: false
+        type: string
+        default: main
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Checkout workflows repo
+        uses: actions/checkout@v4
+        with:
+          repository: intisy/workflows
+          ref: ${{ inputs.workflows_ref }}
+          path: .workflows
+
+      - name: Authenticate gcloud for cloud run
+        if: contains(vars.MS_PROVIDERS, 'cloudrun')
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud for cloud run
+        if: contains(vars.MS_PROVIDERS, 'cloudrun')
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Select provider and run
+        env:
+          MS_PROVIDERS: ${{ vars.MS_PROVIDERS }}
+          RUN_NUMBER: ${{ github.run_number }}
+          MS_GITHUB_OWNER: ${{ vars.MS_GITHUB_OWNER }}
+          MS_GITHUB_REPO: ${{ vars.MS_GITHUB_REPO }}
+          MS_GITHUB_RELEASE_TAG: ${{ inputs.ms_github_release_tag }}
+          MS_GITHUB_ASSET: ${{ inputs.ms_github_asset }}
+          MS_MAX_MINUTES: ${{ inputs.ms_max_minutes }}
+          MS_GITHUB_STORE_TOKEN: ${{ secrets.MS_GITHUB_STORE_TOKEN }}
+          MS_OFFLOAD_CRAWL_TOKENS: ${{ secrets.MS_OFFLOAD_CRAWL_TOKENS }}
+          GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          GCP_ARTIFACT_REGISTRY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          CLOUD_RUN_JOB: ${{ inputs.cloud_run_job }}
+        run: |
+          set -euo pipefail
+          order="$(bash .workflows/select-order "${MS_PROVIDERS:-}" "${RUN_NUMBER:-0}")"
+          if [ -z "$order" ]; then
+            echo "no providers configured in MS_PROVIDERS; nothing to offload"
+            exit 0
+          fi
+          failed=0
+          while IFS= read -r provider; do
+            [ -z "$provider" ] && continue
+            script=".workflows/providers/${provider}.sh"
+            if [ ! -f "$script" ]; then
+              echo "provider '$provider' has no adapter at $script; skipping"
+              failed=1
+              continue
+            fi
+            echo "attempting provider: $provider"
+            if bash "$script"; then
+              echo "provider '$provider' succeeded"
+              exit 0
+            fi
+            echo "provider '$provider' failed; trying next"
+            failed=1
+          done <<< "$order"
+          if [ "$failed" -eq 1 ]; then
+            echo "all enabled providers failed"
+            exit 1
+          fi
