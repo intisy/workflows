@@ -1,115 +1,138 @@
 # Provider Adapters
 
-The Pinaxis provider framework enables fail-over across compute platforms. A single `PINAXIS_PROVIDERS` variable drives provider selection and rotation; the workflow automatically tries the next provider if one fails.
+The offload framework lets any repository hand off a job to a cloud compute provider, with
+automatic fail-over across whichever providers the caller has enabled. A single reusable
+workflow, `offload-run.yml`, drives selection, rotation, and the environment handed to each
+provider's adapter script.
 
-## How It Works
+## The `env_prefix` contract
 
-The `PINAXIS_PROVIDERS` variable holds a comma-separated list of enabled provider names. The workflow:
+The caller of `offload-run.yml` passes one required input, `env_prefix`. Every repository
+variable and secret whose name starts with that prefix is selected and placed in the
+container's environment; nothing else is. This is what lets the same reusable workflow serve
+any consumer: the consumer's own naming convention is the prefix, not something baked into this
+repo.
 
-1. Calls `select-order` with `PINAXIS_PROVIDERS` and `github.run_number` to produce an ordered list, starting at index `github.run_number % provider_count`.
-2. Loops through the ordered list and attempts each provider's adapter script in turn.
-3. If a provider's script exits zero, the crawl succeeds and exits immediately.
-4. If a provider's script exits non-zero, logs the failure and tries the next provider.
-5. If all providers fail, exits non-zero.
+For example, a caller using `PINAXIS_` as its prefix exposes `PINAXIS_GITHUB_REPO`,
+`PINAXIS_MAX_MINUTES`, and any other `PINAXIS_*` variable or secret it defines, but nothing
+with a different prefix.
 
-This rotation ensures load distribution: the same provider is not always first, and failures automatically trigger fail-over without workflow intervention.
+### The `OFFLOAD_` override
 
-## Environment Variables
+A variable or secret named `<PREFIX>OFFLOAD_<REST>` overrides `<PREFIX><REST>` in the
+container, and is never forwarded under its own name. This exists so a cloud job can be given a
+larger credential pool than the one used inside GitHub Actions itself.
 
-Every provider script receives this environment:
+For example, with `env_prefix: PINAXIS_`:
+- `PINAXIS_GITHUB_CRAWL_TOKENS` might hold the token GitHub Actions itself uses.
+- `PINAXIS_OFFLOAD_GITHUB_CRAWL_TOKENS` holds a larger, comma-separated pool of tokens meant
+  only for the cloud job.
+- The container receives `PINAXIS_GITHUB_CRAWL_TOKENS` set to the pool's value; the plain
+  variable is not forwarded at all when the override is present.
 
-**Crawler metadata (from the workflow caller):**
-- `PINAXIS_GITHUB_OWNER`: Repository owner (from `github.repository_owner`)
-- `PINAXIS_GITHUB_REPO`: Repository name (from `github.event.repository.name`)
-- `PINAXIS_GITHUB_RELEASE_TAG`: Release tag to scan (workflow input)
-- `PINAXIS_GITHUB_ASSET`: Asset filename to scan (workflow input)
-- `PINAXIS_MAX_MINUTES`: Job timeout in minutes (workflow input, default: 55)
+### Failure modes
 
-**Tokens and credentials:**
-- `PINAXIS_GITHUB_STORE_TOKEN`: GitHub token for storing crawl results
-- `PINAXIS_OFFLOAD_CRAWL_TOKENS`: Comma-separated list of GitHub tokens for crawling (mapped onto `PINAXIS_GITHUB_CRAWL_TOKENS` inside the adapter)
+- If `env_prefix` matches no variable or secret at all, the run aborts with an error naming
+  the prefix that matched nothing. A typo in the prefix fails loudly instead of silently
+  running with an empty environment.
+- If any selected value contains a newline, the run aborts. The environment is written to a
+  line-based file (`OFFLOAD_ENV_FILE`), which cannot represent a value containing one.
 
-**Runner context (from Actions):**
-- `GITHUB_SHA`: The commit SHA
-- `RUNNER_TEMP`: Temporary directory path
+Both checks happen in `select-env.mjs`, which the reusable workflow invokes before any provider
+runs.
 
-**Provider-specific variables (gated by provider name):**
-Each provider declares its own required variables as env guards at the top of its script.
+### The providers list
 
-## The CloudRun Adapter Example
+The set of enabled providers is not a separate input. It is read from
+`<PREFIX>PROVIDERS`, a repository variable holding a comma-separated list of provider names,
+for example `PINAXIS_PROVIDERS=cloudrun,mycloud`.
 
-The `cloudrun.sh` adapter demonstrates the contract. It requires these provider-specific variables:
+## How the run works
+
+1. `offload-run.yml` computes `<PREFIX>PROVIDERS`, then calls `select-order` with that list and
+   `github.run_number` to produce a rotated order, starting at
+   `run_number % provider_count`. This spreads load across providers instead of always trying
+   the same one first.
+2. It loops through the ordered list and runs each provider's adapter script at
+   `providers/<name>.sh` in turn.
+3. The first adapter that exits zero ends the run successfully.
+4. An adapter that exits non-zero is logged as failed, and the next provider is tried.
+5. If every enabled provider fails, the run exits non-zero.
+
+## What an adapter receives
+
+Every adapter script is invoked with:
+
+- `OFFLOAD_ENV_FILE`: path to a line-based file of `NAME=value` pairs, the selected and
+  override-applied environment for the container. This is what the adapter must hand to the
+  job it runs; it is not exported into the adapter's own shell environment.
+- `OFFLOAD_JOB_NAME`: the job name to deploy under, defaulting to the calling repository's
+  name.
+- `GITHUB_SHA`: the commit SHA, useful for image tags.
+- `RUNNER_TEMP`: a scratch directory on the runner.
+- Its own provider-specific variables, described below.
+
+## The adapter contract
+
+An adapter at `providers/<name>.sh` must:
+
+1. Declare every variable it requires, both the framework variables above and its own
+   provider-specific ones, as guards at the top of the script (bash's
+   `: "${VAR:?missing VAR}"` idiom). This makes missing configuration fail immediately with a
+   clear message instead of misbehaving deeper in the script.
+2. Build the caller's `Dockerfile` into an image.
+3. Run that image once with the environment from `OFFLOAD_ENV_FILE`.
+4. Exit zero on success, non-zero on any failure. The reusable workflow treats a non-zero exit
+   as this provider failing over to the next one.
+
+Provider-specific variables (such as `GCP_*` for the `cloudrun` adapter) are always
+provider-scoped and never carry the caller's `env_prefix`. They belong to the provider, not to
+any one consumer, so every adapter declares its own required variables as guards regardless of
+which repository is calling it.
+
+## Worked example: `cloudrun.sh`
+
+`providers/cloudrun.sh` is the reference adapter. It requires:
 
 - `GCP_PROJECT`: GCP project ID
-- `GCP_REGION`: GCP region (e.g., `us-central1`)
+- `GCP_REGION`: GCP region, for example `us-central1`
 - `GCP_ARTIFACT_REGISTRY`: Artifact Registry name
 - `GCP_SA_KEY`: GCP service account key (JSON)
-- `CLOUD_RUN_JOB`: Cloud Run job name (optional, default: `pinaxis`)
 
-The adapter:
-1. Authenticates to GCP using the service account key
-2. Builds the container from the caller's `Dockerfile`, tagging it with `${GITHUB_SHA}` and `latest`
-3. Pushes the image to Artifact Registry
-4. Creates or updates a Cloud Run job with the image
-5. Executes the job once using `gcloud run jobs execute --wait=false`
-6. Exits zero on success, non-zero on any failure
+It authenticates to GCP with the service account key, builds and pushes the caller's
+`Dockerfile` tagged with `${GITHUB_SHA}` and `latest`, creates or updates a Cloud Run job with
+that image, and executes the job once with `gcloud run jobs execute --wait=false`.
 
-**Important:** The adapter uses the `^@^` custom delimiter trick with gcloud's `--set-env-vars` to safely pass `PINAXIS_OFFLOAD_CRAWL_TOKENS` (a comma-separated list) without shell expansion:
+To pass `OFFLOAD_ENV_FILE` into `gcloud run jobs create/update --set-env-vars`, the adapter uses
+gcloud's `^@^` custom-delimiter syntax:
 
 ```bash
+env_arg="^@^$(paste -sd '@' "$OFFLOAD_ENV_FILE")"
 gcloud run jobs "$action" "$job" \
   --region "$GCP_REGION" \
   --image "${image}:${GITHUB_SHA}" \
-  --set-env-vars "^@^PINAXIS_GITHUB_OWNER=${PINAXIS_GITHUB_OWNER}@PINAXIS_GITHUB_REPO=${PINAXIS_GITHUB_REPO}@..."
+  --set-env-vars "$env_arg"
 ```
 
-This approach avoids issues with commas in token lists and should be adopted by all adapters handling multi-value environment variables.
+This is not cosmetic: `--set-env-vars` normally splits its argument on commas to separate
+`NAME=value` pairs, which would silently truncate any value that itself contains a comma, such
+as a comma-separated token pool from an `OFFLOAD_` override. The `^@^` prefix tells gcloud to
+use `@` as the pair delimiter instead, so commas inside values pass through untouched. Any
+adapter that forwards a multi-value environment variable to a CLI with comma-based argument
+parsing should use the same trick.
 
-## Adapter Contract
-
-Every provider script must:
-
-1. **Declare required variables** using bash's `: ${VAR:?missing VAR}` guards at the top, covering both framework-provided and provider-specific variables.
-2. **Build from the caller's `Dockerfile`** to ensure the crawler code is current.
-3. **Deploy and run the crawler once**, passing the framework env variables through.
-4. **Exit zero on success**, non-zero on failure. The workflow treats any non-zero exit as a provider failure and tries the next one.
-
-The adapter is responsible for all infrastructure plumbing: authentication, image registry access, job creation or update, and deployment.
-
-## Adding a New Provider
+## Adding a new provider
 
 To add a provider named `mycloud`:
 
-1. **Write the adapter script** at `<workflows-repo>/providers/mycloud.sh`.
-   - Declare all required variables with `: ${VAR:?message}` guards.
-   - Build and deploy the crawler from the caller's `Dockerfile`.
-   - Exit zero on success, non-zero on failure.
-
-2. **Document the provider-specific variables and secrets** in the adapter script's comments or in a provider-specific section of this file.
-
-3. **Add the provider name to `PINAXIS_PROVIDERS`** in your repository's GitHub variables:
-   ```
-   PINAXIS_PROVIDERS=cloudrun,mycloud
-   ```
-
-4. **Add any provider-specific setup to the workflow** in `.github/workflows/pinaxis-run.yml`, gated by provider name:
-   ```yaml
-   - name: Authenticate to mycloud
-     if: contains(vars.PINAXIS_PROVIDERS, 'mycloud')
-     # ... authentication step ...
-   ```
-
-5. **Add provider-specific variables and secrets** to your repository:
-   - Variables: `MY_CLOUD_PROJECT`, etc. (visible in logs)
-   - Secrets: `MY_CLOUD_API_KEY`, etc. (redacted in logs)
-
-## Tokens and PINAXIS_OFFLOAD_CRAWL_TOKENS
-
-The framework passes crawl tokens to the provider via `PINAXIS_OFFLOAD_CRAWL_TOKENS`, a comma-separated list. Each adapter is responsible for mapping this onto the crawler's expected environment variable name.
-
-**Example (cloudrun.sh):**
-```bash
---set-env-vars "^@^...@PINAXIS_GITHUB_CRAWL_TOKENS=${PINAXIS_OFFLOAD_CRAWL_TOKENS}"
-```
-
-This naming convention (`PINAXIS_OFFLOAD_*` for framework variables, mapped to `PINAXIS_*` for in-container variables) keeps provider responsibilities clear: the framework provides tokens generically, and each provider adapts them to the crawler's interface.
+1. Write `providers/mycloud.sh` following the adapter contract above: declare required
+   variables as guards, build and run the caller's `Dockerfile`, exit zero or non-zero.
+2. Document `mycloud`'s provider-specific variables and secrets, either in the adapter script's
+   comments or in a new section of this file.
+3. Add `mycloud` to the caller repository's `<PREFIX>PROVIDERS` variable, for example
+   `PINAXIS_PROVIDERS=cloudrun,mycloud`.
+4. Add any provider-specific setup steps (such as an authentication action) to
+   `.github/workflows/offload-run.yml`, gated on the provider name appearing in
+   `vars[format('{0}PROVIDERS', inputs.env_prefix)]`.
+5. Add `mycloud`'s required variables and secrets to the caller repository: variables for
+   anything that can appear in logs, secrets for anything that must be redacted.
