@@ -1,22 +1,17 @@
-name: pinaxis-run
+name: offload-run
 
 on:
   workflow_call:
     inputs:
-      pinaxis_github_release_tag:
+      env_prefix:
+        description: 'Prefix identifying which caller vars and secrets to place in the container, e.g. PINAXIS_'
         required: true
         type: string
-      pinaxis_github_asset:
-        required: true
-        type: string
-      pinaxis_max_minutes:
+      job_name:
+        description: 'Cloud job name; defaults to the calling repository name'
         required: false
         type: string
-        default: "55"
-      cloud_run_job:
-        required: false
-        type: string
-        default: pinaxis
+        default: ''
       workflows_ref:
         required: false
         type: string
@@ -36,37 +31,42 @@ jobs:
           ref: ${{ inputs.workflows_ref }}
           path: .workflows
 
+      - name: Build the container environment
+        id: env
+        env:
+          ALL_VARS: ${{ toJSON(vars) }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          PREFIX: ${{ inputs.env_prefix }}
+        run: |
+          set -euo pipefail
+          node .workflows/select-env.mjs "$PREFIX" ALL_VARS ALL_SECRETS > "$RUNNER_TEMP/offload-env"
+          echo "count=$(wc -l < "$RUNNER_TEMP/offload-env")" >> "$GITHUB_OUTPUT"
+
       - name: Authenticate gcloud for cloud run
-        if: contains(vars.PINAXIS_PROVIDERS, 'cloudrun')
+        if: contains(vars[format('{0}PROVIDERS', inputs.env_prefix)], 'cloudrun')
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up gcloud for cloud run
-        if: contains(vars.PINAXIS_PROVIDERS, 'cloudrun')
+        if: contains(vars[format('{0}PROVIDERS', inputs.env_prefix)], 'cloudrun')
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Select provider and run
         env:
-          PINAXIS_PROVIDERS: ${{ vars.PINAXIS_PROVIDERS }}
+          PROVIDERS: ${{ vars[format('{0}PROVIDERS', inputs.env_prefix)] }}
           RUN_NUMBER: ${{ github.run_number }}
-          PINAXIS_GITHUB_OWNER: ${{ vars.PINAXIS_GITHUB_OWNER }}
-          PINAXIS_GITHUB_REPO: ${{ vars.PINAXIS_GITHUB_REPO }}
-          PINAXIS_GITHUB_RELEASE_TAG: ${{ inputs.pinaxis_github_release_tag }}
-          PINAXIS_GITHUB_ASSET: ${{ inputs.pinaxis_github_asset }}
-          PINAXIS_MAX_MINUTES: ${{ inputs.pinaxis_max_minutes }}
-          PINAXIS_GITHUB_STORE_TOKEN: ${{ secrets.PINAXIS_GITHUB_STORE_TOKEN }}
-          PINAXIS_OFFLOAD_CRAWL_TOKENS: ${{ secrets.PINAXIS_OFFLOAD_CRAWL_TOKENS }}
+          OFFLOAD_JOB_NAME: ${{ inputs.job_name != '' && inputs.job_name || github.event.repository.name }}
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_ARTIFACT_REGISTRY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
           GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
-          CLOUD_RUN_JOB: ${{ inputs.cloud_run_job }}
         run: |
           set -euo pipefail
-          order="$(bash .workflows/select-order "${PINAXIS_PROVIDERS:-}" "${RUN_NUMBER:-0}")"
+          export OFFLOAD_ENV_FILE="$RUNNER_TEMP/offload-env"
+          order="$(bash .workflows/select-order "${PROVIDERS:-}" "${RUN_NUMBER:-0}")"
           if [ -z "$order" ]; then
-            echo "no providers configured in PINAXIS_PROVIDERS; nothing to offload"
+            echo "no providers configured in ${{ inputs.env_prefix }}PROVIDERS; nothing to offload"
             exit 0
           fi
           failed=0

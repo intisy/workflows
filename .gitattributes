@@ -5,5 +5,5 @@
 /select-order        text eol=lf
 /test-select-order   text eol=lf
 /providers/*.sh      text eol=lf
-/.github/workflows/pinaxis-run.yml text eol=lf
+/.github/workflows/offload-run.yml text eol=lf
 /select-env.mjs      text eol=lf
