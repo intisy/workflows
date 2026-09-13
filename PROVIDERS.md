@@ -17,6 +17,22 @@ For example, a caller using `PINAXIS_` as its prefix exposes `PINAXIS_GITHUB_REP
 `PINAXIS_MAX_MINUTES`, and any other `PINAXIS_*` variable or secret it defines, but nothing
 with a different prefix.
 
+The caller's job must also pass `secrets: inherit` alongside `env_prefix`, for example:
+
+```yaml
+jobs:
+  offload:
+    uses: intisy/workflows/.github/workflows/offload-run.yml@main
+    with:
+      env_prefix: PINAXIS_
+    secrets: inherit
+```
+
+Repository variables resolve regardless of `secrets: inherit`, so a caller that omits it still
+passes selection and appears to run, but with zero secrets forwarded. With the `cloudrun`
+provider this surfaces as a GCP authentication failure; a provider that does not require
+credentials up front could instead run silently unauthenticated.
+
 ### The `OFFLOAD_` override
 
 A variable or secret named `<PREFIX>OFFLOAD_<REST>` overrides `<PREFIX><REST>` in the
@@ -65,7 +81,8 @@ Every adapter script is invoked with:
 
 - `OFFLOAD_ENV_FILE`: path to a line-based file of `NAME=value` pairs, the selected and
   override-applied environment for the container. This is what the adapter must hand to the
-  job it runs; it is not exported into the adapter's own shell environment.
+  job it runs; the pairs inside the file are not themselves exported as shell variables in the
+  adapter's own environment, only the path to the file is.
 - `OFFLOAD_JOB_NAME`: the job name to deploy under, defaulting to the calling repository's
   name.
 - `GITHUB_SHA`: the commit SHA, useful for image tags.

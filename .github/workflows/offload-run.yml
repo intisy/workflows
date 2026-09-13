@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       env_prefix:
-        description: 'Prefix identifying which caller vars and secrets to place in the container, e.g. PINAXIS_'
+        description: 'Prefix identifying which caller vars and secrets to place in the container, e.g. PINAXIS_. The caller must also pass secrets: inherit, or no secrets will be forwarded even though vars still resolve.'
         required: true
         type: string
       job_name:
@@ -40,7 +40,12 @@ jobs:
         run: |
           set -euo pipefail
           node .workflows/select-env.mjs "$PREFIX" ALL_VARS ALL_SECRETS > "$RUNNER_TEMP/offload-env"
-          echo "count=$(wc -l < "$RUNNER_TEMP/offload-env")" >> "$GITHUB_OUTPUT"
+          count=$(wc -l < "$RUNNER_TEMP/offload-env")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -eq 0 ]; then
+            echo "no variables or secrets matched prefix '$PREFIX'; nothing to offload" >&2
+            exit 1
+          fi
 
       - name: Authenticate gcloud for cloud run
         if: contains(vars[format('{0}PROVIDERS', inputs.env_prefix)], 'cloudrun')
