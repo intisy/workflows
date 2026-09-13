@@ -5,16 +5,12 @@ set -euo pipefail
 : "${GCP_REGION:?missing GCP_REGION}"
 : "${GCP_ARTIFACT_REGISTRY:?missing GCP_ARTIFACT_REGISTRY}"
 : "${GCP_SA_KEY:?missing GCP_SA_KEY}"
-: "${PINAXIS_GITHUB_STORE_TOKEN:?missing PINAXIS_GITHUB_STORE_TOKEN}"
-: "${PINAXIS_OFFLOAD_CRAWL_TOKENS:?missing PINAXIS_OFFLOAD_CRAWL_TOKENS}"
-: "${PINAXIS_GITHUB_RELEASE_TAG:?missing PINAXIS_GITHUB_RELEASE_TAG}"
-: "${PINAXIS_GITHUB_ASSET:?missing PINAXIS_GITHUB_ASSET}"
 : "${GITHUB_SHA:?missing GITHUB_SHA}"
 : "${RUNNER_TEMP:?missing RUNNER_TEMP}"
-: "${PINAXIS_GITHUB_OWNER:?missing PINAXIS_GITHUB_OWNER}"
-: "${PINAXIS_GITHUB_REPO:?missing PINAXIS_GITHUB_REPO}"
+: "${OFFLOAD_ENV_FILE:?missing OFFLOAD_ENV_FILE}"
+: "${OFFLOAD_JOB_NAME:?missing OFFLOAD_JOB_NAME}"
 
-job="${CLOUD_RUN_JOB:-pinaxis}"
+job="$OFFLOAD_JOB_NAME"
 image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${GCP_ARTIFACT_REGISTRY}/${job}"
 
 # authenticate to GCP using the service account key from the environment
@@ -34,9 +30,11 @@ else
 fi
 
 # ^@^ declares @ as delimiter; single --set-env-vars with custom delimiter safely handles comma-separated tokens
+env_arg="^@^$(paste -sd '@' "$OFFLOAD_ENV_FILE")"
+
 gcloud run jobs "$action" "$job" \
   --region "$GCP_REGION" \
   --image "${image}:${GITHUB_SHA}" \
-  --set-env-vars "^@^PINAXIS_GITHUB_OWNER=${PINAXIS_GITHUB_OWNER}@PINAXIS_GITHUB_REPO=${PINAXIS_GITHUB_REPO}@PINAXIS_GITHUB_RELEASE_TAG=${PINAXIS_GITHUB_RELEASE_TAG}@PINAXIS_GITHUB_ASSET=${PINAXIS_GITHUB_ASSET}@PINAXIS_MAX_MINUTES=${PINAXIS_MAX_MINUTES:-55}@PINAXIS_GITHUB_STORE_TOKEN=${PINAXIS_GITHUB_STORE_TOKEN}@PINAXIS_GITHUB_CRAWL_TOKENS=${PINAXIS_OFFLOAD_CRAWL_TOKENS}"
+  --set-env-vars "$env_arg"
 
 gcloud run jobs execute "$job" --region "$GCP_REGION" --wait=false
