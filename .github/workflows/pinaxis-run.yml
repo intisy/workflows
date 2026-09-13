@@ -1,22 +1,22 @@
-name: multiscrape-run
+name: pinaxis-run
 
 on:
   workflow_call:
     inputs:
-      ms_github_release_tag:
+      pinaxis_github_release_tag:
         required: true
         type: string
-      ms_github_asset:
+      pinaxis_github_asset:
         required: true
         type: string
-      ms_max_minutes:
+      pinaxis_max_minutes:
         required: false
         type: string
         default: "55"
       cloud_run_job:
         required: false
         type: string
-        default: multiscrape
+        default: pinaxis
       workflows_ref:
         required: false
         type: string
@@ -37,26 +37,26 @@ jobs:
           path: .workflows
 
       - name: Authenticate gcloud for cloud run
-        if: contains(vars.MS_PROVIDERS, 'cloudrun')
+        if: contains(vars.PINAXIS_PROVIDERS, 'cloudrun')
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up gcloud for cloud run
-        if: contains(vars.MS_PROVIDERS, 'cloudrun')
+        if: contains(vars.PINAXIS_PROVIDERS, 'cloudrun')
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Select provider and run
         env:
-          MS_PROVIDERS: ${{ vars.MS_PROVIDERS }}
+          PINAXIS_PROVIDERS: ${{ vars.PINAXIS_PROVIDERS }}
           RUN_NUMBER: ${{ github.run_number }}
-          MS_GITHUB_OWNER: ${{ vars.MS_GITHUB_OWNER }}
-          MS_GITHUB_REPO: ${{ vars.MS_GITHUB_REPO }}
-          MS_GITHUB_RELEASE_TAG: ${{ inputs.ms_github_release_tag }}
-          MS_GITHUB_ASSET: ${{ inputs.ms_github_asset }}
-          MS_MAX_MINUTES: ${{ inputs.ms_max_minutes }}
-          MS_GITHUB_STORE_TOKEN: ${{ secrets.MS_GITHUB_STORE_TOKEN }}
-          MS_OFFLOAD_CRAWL_TOKENS: ${{ secrets.MS_OFFLOAD_CRAWL_TOKENS }}
+          PINAXIS_GITHUB_OWNER: ${{ vars.PINAXIS_GITHUB_OWNER }}
+          PINAXIS_GITHUB_REPO: ${{ vars.PINAXIS_GITHUB_REPO }}
+          PINAXIS_GITHUB_RELEASE_TAG: ${{ inputs.pinaxis_github_release_tag }}
+          PINAXIS_GITHUB_ASSET: ${{ inputs.pinaxis_github_asset }}
+          PINAXIS_MAX_MINUTES: ${{ inputs.pinaxis_max_minutes }}
+          PINAXIS_GITHUB_STORE_TOKEN: ${{ secrets.PINAXIS_GITHUB_STORE_TOKEN }}
+          PINAXIS_OFFLOAD_CRAWL_TOKENS: ${{ secrets.PINAXIS_OFFLOAD_CRAWL_TOKENS }}
           GCP_PROJECT: ${{ vars.GCP_PROJECT }}
           GCP_REGION: ${{ vars.GCP_REGION }}
           GCP_ARTIFACT_REGISTRY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
@@ -64,9 +64,9 @@ jobs:
           CLOUD_RUN_JOB: ${{ inputs.cloud_run_job }}
         run: |
           set -euo pipefail
-          order="$(bash .workflows/select-order "${MS_PROVIDERS:-}" "${RUN_NUMBER:-0}")"
+          order="$(bash .workflows/select-order "${PINAXIS_PROVIDERS:-}" "${RUN_NUMBER:-0}")"
           if [ -z "$order" ]; then
-            echo "no providers configured in MS_PROVIDERS; nothing to offload"
+            echo "no providers configured in PINAXIS_PROVIDERS; nothing to offload"
             exit 0
           fi
           failed=0

@@ -1,12 +1,12 @@
 # Provider Adapters
 
-The MultiScrape provider framework enables fail-over across compute platforms. A single `MS_PROVIDERS` variable drives provider selection and rotation; the workflow automatically tries the next provider if one fails.
+The Pinaxis provider framework enables fail-over across compute platforms. A single `PINAXIS_PROVIDERS` variable drives provider selection and rotation; the workflow automatically tries the next provider if one fails.
 
 ## How It Works
 
-The `MS_PROVIDERS` variable holds a comma-separated list of enabled provider names. The workflow:
+The `PINAXIS_PROVIDERS` variable holds a comma-separated list of enabled provider names. The workflow:
 
-1. Calls `select-order` with `MS_PROVIDERS` and `github.run_number` to produce an ordered list, starting at index `github.run_number % provider_count`.
+1. Calls `select-order` with `PINAXIS_PROVIDERS` and `github.run_number` to produce an ordered list, starting at index `github.run_number % provider_count`.
 2. Loops through the ordered list and attempts each provider's adapter script in turn.
 3. If a provider's script exits zero, the crawl succeeds and exits immediately.
 4. If a provider's script exits non-zero, logs the failure and tries the next provider.
@@ -19,15 +19,15 @@ This rotation ensures load distribution: the same provider is not always first, 
 Every provider script receives this environment:
 
 **Crawler metadata (from the workflow caller):**
-- `MS_GITHUB_OWNER`: Repository owner (from `github.repository_owner`)
-- `MS_GITHUB_REPO`: Repository name (from `github.event.repository.name`)
-- `MS_GITHUB_RELEASE_TAG`: Release tag to scan (workflow input)
-- `MS_GITHUB_ASSET`: Asset filename to scan (workflow input)
-- `MS_MAX_MINUTES`: Job timeout in minutes (workflow input, default: 55)
+- `PINAXIS_GITHUB_OWNER`: Repository owner (from `github.repository_owner`)
+- `PINAXIS_GITHUB_REPO`: Repository name (from `github.event.repository.name`)
+- `PINAXIS_GITHUB_RELEASE_TAG`: Release tag to scan (workflow input)
+- `PINAXIS_GITHUB_ASSET`: Asset filename to scan (workflow input)
+- `PINAXIS_MAX_MINUTES`: Job timeout in minutes (workflow input, default: 55)
 
 **Tokens and credentials:**
-- `MS_GITHUB_STORE_TOKEN`: GitHub token for storing crawl results
-- `MS_OFFLOAD_CRAWL_TOKENS`: Comma-separated list of GitHub tokens for crawling (mapped onto `MS_GITHUB_CRAWL_TOKENS` inside the adapter)
+- `PINAXIS_GITHUB_STORE_TOKEN`: GitHub token for storing crawl results
+- `PINAXIS_OFFLOAD_CRAWL_TOKENS`: Comma-separated list of GitHub tokens for crawling (mapped onto `PINAXIS_GITHUB_CRAWL_TOKENS` inside the adapter)
 
 **Runner context (from Actions):**
 - `GITHUB_SHA`: The commit SHA
@@ -44,7 +44,7 @@ The `cloudrun.sh` adapter demonstrates the contract. It requires these provider-
 - `GCP_REGION`: GCP region (e.g., `us-central1`)
 - `GCP_ARTIFACT_REGISTRY`: Artifact Registry name
 - `GCP_SA_KEY`: GCP service account key (JSON)
-- `CLOUD_RUN_JOB`: Cloud Run job name (optional, default: `multiscrape`)
+- `CLOUD_RUN_JOB`: Cloud Run job name (optional, default: `pinaxis`)
 
 The adapter:
 1. Authenticates to GCP using the service account key
@@ -54,13 +54,13 @@ The adapter:
 5. Executes the job once using `gcloud run jobs execute --wait=false`
 6. Exits zero on success, non-zero on any failure
 
-**Important:** The adapter uses the `^@^` custom delimiter trick with gcloud's `--set-env-vars` to safely pass `MS_OFFLOAD_CRAWL_TOKENS` (a comma-separated list) without shell expansion:
+**Important:** The adapter uses the `^@^` custom delimiter trick with gcloud's `--set-env-vars` to safely pass `PINAXIS_OFFLOAD_CRAWL_TOKENS` (a comma-separated list) without shell expansion:
 
 ```bash
 gcloud run jobs "$action" "$job" \
   --region "$GCP_REGION" \
   --image "${image}:${GITHUB_SHA}" \
-  --set-env-vars "^@^MS_GITHUB_OWNER=${MS_GITHUB_OWNER}@MS_GITHUB_REPO=${MS_GITHUB_REPO}@..."
+  --set-env-vars "^@^PINAXIS_GITHUB_OWNER=${PINAXIS_GITHUB_OWNER}@PINAXIS_GITHUB_REPO=${PINAXIS_GITHUB_REPO}@..."
 ```
 
 This approach avoids issues with commas in token lists and should be adopted by all adapters handling multi-value environment variables.
@@ -87,15 +87,15 @@ To add a provider named `mycloud`:
 
 2. **Document the provider-specific variables and secrets** in the adapter script's comments or in a provider-specific section of this file.
 
-3. **Add the provider name to `MS_PROVIDERS`** in your repository's GitHub variables:
+3. **Add the provider name to `PINAXIS_PROVIDERS`** in your repository's GitHub variables:
    ```
-   MS_PROVIDERS=cloudrun,mycloud
+   PINAXIS_PROVIDERS=cloudrun,mycloud
    ```
 
-4. **Add any provider-specific setup to the workflow** in `.github/workflows/multiscrape-run.yml`, gated by provider name:
+4. **Add any provider-specific setup to the workflow** in `.github/workflows/pinaxis-run.yml`, gated by provider name:
    ```yaml
    - name: Authenticate to mycloud
-     if: contains(vars.MS_PROVIDERS, 'mycloud')
+     if: contains(vars.PINAXIS_PROVIDERS, 'mycloud')
      # ... authentication step ...
    ```
 
@@ -103,13 +103,13 @@ To add a provider named `mycloud`:
    - Variables: `MY_CLOUD_PROJECT`, etc. (visible in logs)
    - Secrets: `MY_CLOUD_API_KEY`, etc. (redacted in logs)
 
-## Tokens and MS_OFFLOAD_CRAWL_TOKENS
+## Tokens and PINAXIS_OFFLOAD_CRAWL_TOKENS
 
-The framework passes crawl tokens to the provider via `MS_OFFLOAD_CRAWL_TOKENS`, a comma-separated list. Each adapter is responsible for mapping this onto the crawler's expected environment variable name.
+The framework passes crawl tokens to the provider via `PINAXIS_OFFLOAD_CRAWL_TOKENS`, a comma-separated list. Each adapter is responsible for mapping this onto the crawler's expected environment variable name.
 
 **Example (cloudrun.sh):**
 ```bash
---set-env-vars "^@^...@MS_GITHUB_CRAWL_TOKENS=${MS_OFFLOAD_CRAWL_TOKENS}"
+--set-env-vars "^@^...@PINAXIS_GITHUB_CRAWL_TOKENS=${PINAXIS_OFFLOAD_CRAWL_TOKENS}"
 ```
 
-This naming convention (`MS_OFFLOAD_*` for framework variables, mapped to `MS_*` for in-container variables) keeps provider responsibilities clear: the framework provides tokens generically, and each provider adapts them to the crawler's interface.
+This naming convention (`PINAXIS_OFFLOAD_*` for framework variables, mapped to `PINAXIS_*` for in-container variables) keeps provider responsibilities clear: the framework provides tokens generically, and each provider adapts them to the crawler's interface.
