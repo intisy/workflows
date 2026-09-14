@@ -3,8 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-
-const SCRIPT = join(import.meta.dirname, "merge.sh");
+import { mergeBranches, optionsFromEnv } from "./merge.ts";
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
@@ -47,12 +46,14 @@ function fixture(): Fixture {
   return { work, remote };
 }
 
-function run(work: string, env: Record<string, string>): string {
-  return execFileSync("bash", [SCRIPT], {
-    cwd: work,
-    encoding: "utf-8",
-    env: { ...process.env, MODE: "merge", SYNC_BACK: "false", GENERATED_PATHS: "README.md", ...env },
-  });
+// Called in process rather than spawned, so the suite needs no shell and runs on every platform.
+function run(work: string, env: Record<string, string>): void {
+  mergeBranches(work, optionsFromEnv({
+    MODE: "merge",
+    SYNC_BACK: "false",
+    GENERATED_PATHS: "README.md",
+    ...env,
+  }));
 }
 
 describe("merge-branches", () => {

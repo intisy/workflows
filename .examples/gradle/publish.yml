@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and upload; empty takes the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    uses: intisy/workflows/.github/workflows/test.yml@main
+    with:
+      ref: ${{ inputs.tag }}
+      gradle_test: build
+
+  publish:
+    needs: test
+    uses: intisy/workflows/.github/workflows/publish.yml@main
+    with:
+      tag: ${{ inputs.tag }}
+      gradle_build: build
+      release_assets: 'build/libs/*'
