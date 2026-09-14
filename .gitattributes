@@ -1,9 +1,2 @@
 # Auto detect text files and perform LF normalization
 * text=auto
-
-# provider adapters run on Linux runners; force LF so bash does not choke on CR
-/select-order        text eol=lf
-/test-select-order   text eol=lf
-/providers/*.sh      text eol=lf
-/.github/workflows/offload-run.yml text eol=lf
-/select-env.mjs      text eol=lf
