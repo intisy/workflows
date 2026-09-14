@@ -1,5 +1,6 @@
-# Runs one java command with the caller's variables and secrets placed in the environment as two
-# JSON blobs. The callee program selects what it needs from them, so this file names no variable.
+# Runs one java command with the caller's variables and secrets placed in the environment as JSON
+# blobs, plus anything the caller computed for this run. The callee program selects what it needs
+# from them, so this file names no variable.
 name: java-task
 
 on:
@@ -22,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      extra_env:
+        description: 'Extra environment as a JSON object, for values the caller computes per run'
+        required: false
+        type: string
+        default: '{}'
     outputs:
       offload:
         description: 'Whether the command asked for an offload turn'
@@ -50,3 +56,4 @@ jobs:
         env:
           ALL_VARS: ${{ toJSON(vars) }}
           ALL_SECRETS: ${{ toJSON(secrets) }}
+          EXTRA_ENV: ${{ inputs.extra_env }}
