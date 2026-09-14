@@ -1,0 +1,52 @@
+# Runs one java command with the caller's variables and secrets placed in the environment as two
+# JSON blobs. The callee program selects what it needs from them, so this file names no variable.
+name: java-task
+
+on:
+  workflow_call:
+    inputs:
+      command:
+        description: 'Command to run, for example ./gradlew run'
+        required: true
+        type: string
+      java_version:
+        required: false
+        type: string
+        default: '21'
+      runs_on:
+        required: false
+        type: string
+        default: ubuntu-latest
+      setup_gcloud:
+        description: 'Install the Google Cloud CLI before running the command'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      offload:
+        description: 'Whether the command asked for an offload turn'
+        value: ${{ jobs.run.outputs.offload }}
+
+jobs:
+  run:
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      contents: read
+    outputs:
+      offload: ${{ steps.task.outputs.offload }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+
+      - if: inputs.setup_gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - id: task
+        run: ${{ inputs.command }}
+        env:
+          ALL_VARS: ${{ toJSON(vars) }}
+          ALL_SECRETS: ${{ toJSON(secrets) }}
