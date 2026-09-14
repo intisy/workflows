@@ -27,6 +27,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # Pinned, not an input: Node runs the TypeScript directly and only 24 and above can.
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    # Node runs the TypeScript directly, so there is no build step and nothing to install.
     - name: Merge
       shell: bash
       env:
@@ -35,4 +42,4 @@ runs:
         MODE: ${{ inputs.mode }}
         SYNC_BACK: ${{ inputs.sync_back }}
         GENERATED_PATHS: ${{ inputs.generated_paths }}
-      run: bash "${{ github.action_path }}/merge.sh"
+      run: node "${{ github.action_path }}/merge.ts"

@@ -1,0 +1,26 @@
+# This repository's own CI, not a reusable workflow. The self- prefix marks it as such: every
+# other file here is called by other repositories, this one only ever runs on this one.
+#
+# It exists so the most-called action in the ecosystem is exercised by the repository that ships it,
+# rather than only ever by its consumers.
+name: "Self: merge"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - development
+
+permissions:
+  contents: write
+
+jobs:
+  # No envPAT deliberately: sync_back pushes to development, which this workflow triggers on, and the
+  # job token does not retrigger workflows while a PAT does, which would loop.
+  merge:
+    uses: ./.github/workflows/merge.yml
+    with:
+      source: development
+      target: main
+      sync_back: true
+      generated_paths: README.md
