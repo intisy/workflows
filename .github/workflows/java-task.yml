@@ -18,11 +18,6 @@ on:
         required: false
         type: string
         default: ubuntu-latest
-      setup_gcloud:
-        description: 'Install the Google Cloud CLI before running the command'
-        required: false
-        type: boolean
-        default: false
       extra_env:
         description: 'Extra environment as a JSON object, for values the caller computes per run'
         required: false
@@ -47,9 +42,6 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ inputs.java_version }}
-
-      - if: inputs.setup_gcloud
-        uses: google-github-actions/setup-gcloud@v2
 
       - id: task
         run: ${{ inputs.command }}
