@@ -98,7 +98,9 @@ Cloudflare, and a failing check stops the list rather than continuing to the nex
 from a developer machine needs no credential at all, because `wrangler login` holds an OAuth
 session there; CI has no browser, so it needs `CLOUDFLARE_API_TOKEN`, and an empty one is reported
 by name instead of reaching wrangler as an opaque auth failure. `CLOUDFLARE_ACCOUNT_ID` is a secret
-rather than a committed value so the account id stays out of a public repository.
+rather than a committed value so the account id stays out of a public repository. `envPAT` reaches the
+checks as `GH_TOKEN` as well as the checkout, because a build step that assembles its data from another
+repository cannot do it with the job token, which is scoped to the calling repository alone.
 
 `monitor.yml` turns a health endpoint into a notification: a service that reports its own status
 cannot push that anywhere, so the run fails and GitHub emails the repository owner.
