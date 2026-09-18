@@ -63,7 +63,9 @@ on:
         description: 'Passed as an env var rather than committed, so the account id stays out of a public repository'
         required: false
       envPAT:
-        description: 'Token used for the checkout; falls back to the job token'
+        description: >-
+          Token for the checkout, which falls back to the job token, and for the checks, which get it
+          as GH_TOKEN so a build step may read a repository the job token cannot reach.
         required: false
 
 jobs:
@@ -92,10 +94,13 @@ jobs:
         run: ${{ inputs.node_install }}
 
       # Fails before any credential is touched, so a broken build cannot reach Cloudflare at all.
+      # @remarks GH_TOKEN is the job token's stand-in for a check that reads ANOTHER repository, which
+      # the job token cannot do. Empty when no envPAT is passed, leaving gh to its own resolution.
       - name: Checks
         if: ${{ inputs.checks != '' }}
         env:
           CHECKS: ${{ inputs.checks }}
+          GH_TOKEN: ${{ secrets.envPAT }}
         run: |
           printf '%s\n' "$CHECKS" | while IFS= read -r check; do
             [ -z "$check" ] && continue
