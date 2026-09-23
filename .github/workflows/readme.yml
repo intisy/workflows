@@ -118,3 +118,5 @@ jobs:
           # the one workflow allowed to produce it.
           add: 'README.md --force'
           default_author: github_actions
+          # A superproject's history can pin submodule commits its current remotes no longer serve.
+          fetch: '--tags --force --no-recurse-submodules'
