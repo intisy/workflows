@@ -1,0 +1,17 @@
+name: Downstream
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+jobs:
+  downstream:
+    uses: intisy/workflows/.github/workflows/downstream.yml@main
+    with:
+      # Repositories whose CI builds THIS one from source, so a change here can break them
+      # without anything failing here.
+      repositories: '["owner/plugin-a", "owner/plugin-b"]'
+    secrets:
+      # Needs actions:write on every repository named above.
+      envPAT: ${{ secrets.PAT }}
