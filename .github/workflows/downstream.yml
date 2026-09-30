@@ -65,6 +65,14 @@ jobs:
         run: |
           set -eu
 
+          # The job token cannot start a workflow in another repository, and a caller passing an
+          # unset secret hands this an empty string rather than failing, so the unset case has to
+          # be named here or it surfaces as an unexplained exit 4 from gh.
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::envPAT is empty. Starting a workflow in another repository needs a token with actions:write on it; the job token cannot."
+            exit 1
+          fi
+
           ref="$REF"
           if [ -z "$ref" ]; then
             ref=$(gh api "repos/${REPOSITORY}" --jq .default_branch)
