@@ -1,0 +1,122 @@
+name: Downstream
+
+# A repository that other repositories build against has no way to learn that it broke one of them.
+# Their CI is the signal and it points the wrong way: it runs on their schedule, in their repo, and
+# nothing carries the result back. This starts each dependant's own workflow and fails when one of
+# them fails, so a break upstream arrives as a notification here instead of as a red tick nobody is
+# looking at. The caller owns the schedule, since how often dependants are worth running is its own
+# business.
+#
+# It STARTS the runs rather than reading each repository's latest conclusion, and that is the whole
+# point: a conclusion left by some earlier hand-started run is stale by construction, and a check
+# built on one reports success for ever without ever having run anything.
+
+on:
+  workflow_call:
+    inputs:
+      repositories:
+        description: >-
+          JSON array of owner/repo the job fans out over. Empty skips the whole check and passes, so
+          a fork with no dependants is not permanently red.
+        required: false
+        type: string
+        default: '[]'
+      workflow:
+        description: 'Workflow file to start in each repository; it must declare workflow_dispatch'
+        required: false
+        type: string
+        default: 'test.yml'
+      ref:
+        description: >-
+          Ref to start the workflow on. Empty uses each repository's own default branch, which is
+          why no branch name is written down here.
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        description: 'Per-repository budget covering both the wait for the run to appear and the run itself'
+        required: false
+        type: number
+        default: 45
+    secrets:
+      envPAT:
+        description: >-
+          Token with actions:write on every named repository. The job token cannot start a workflow
+          in another repository, so without this the check can only fail.
+        required: true
+
+jobs:
+  downstream:
+    if: inputs.repositories != '[]' && inputs.repositories != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        repository: ${{ fromJSON(inputs.repositories) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Run ${{ matrix.repository }} and wait
+        env:
+          GH_TOKEN: ${{ secrets.envPAT }}
+          REPOSITORY: ${{ matrix.repository }}
+          WORKFLOW: ${{ inputs.workflow }}
+          REF: ${{ inputs.ref }}
+          TIMEOUT_MINUTES: ${{ inputs.timeout_minutes }}
+        run: |
+          set -eu
+
+          ref="$REF"
+          if [ -z "$ref" ]; then
+            ref=$(gh api "repos/${REPOSITORY}" --jq .default_branch)
+          fi
+
+          # Runs are matched by creation time, so the window opens before the dispatch. The two
+          # minutes absorb clock skew between this runner and GitHub; widening it only risks
+          # matching an unrelated dispatch, which the ambiguity check below is there for.
+          since=$(date -u -d '-2 minutes' +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "Starting ${WORKFLOW} in ${REPOSITORY} on ${ref}"
+          gh workflow run "$WORKFLOW" --repo "$REPOSITORY" --ref "$ref"
+
+          deadline=$(( $(date +%s) + TIMEOUT_MINUTES * 60 ))
+
+          # The dispatch API answers 204 with no body, so the run it created has to be found. An
+          # ambiguous or absent answer FAILS below rather than passing: a check that cannot tell
+          # which run it started has learned nothing, and reporting that as success is the one
+          # outcome this workflow exists to prevent.
+          matched="repos/${REPOSITORY}/actions/workflows/${WORKFLOW}/runs?event=workflow_dispatch&created=>=${since}&per_page=10"
+          run_id=''
+          while [ -z "$run_id" ]; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::No workflow_dispatch run appeared in ${REPOSITORY} within the timeout."
+              exit 1
+            fi
+            sleep 10
+            found=$(gh api "$matched" --jq '.workflow_runs | length')
+            if [ "$found" -gt 1 ]; then
+              gh api "$matched" --jq '.workflow_runs[] | "  \(.html_url) \(.created_at)"'
+              echo "::error::${found} dispatches of ${WORKFLOW} in ${REPOSITORY} share this window, so which one this job started cannot be told."
+              exit 1
+            fi
+            run_id=$(gh api "$matched" --jq '.workflow_runs[0].id // empty')
+          done
+
+          url=$(gh api "repos/${REPOSITORY}/actions/runs/${run_id}" --jq .html_url)
+          echo "Watching ${url}"
+
+          while :; do
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::${REPOSITORY} did not finish within the timeout: ${url}"
+              exit 1
+            fi
+            status=$(gh api "repos/${REPOSITORY}/actions/runs/${run_id}" --jq .status)
+            [ "$status" = "completed" ] && break
+            sleep 20
+          done
+
+          conclusion=$(gh api "repos/${REPOSITORY}/actions/runs/${run_id}" --jq .conclusion)
+          if [ "$conclusion" != "success" ]; then
+            echo "::error::${REPOSITORY} finished ${conclusion}: ${url}"
+            exit 1
+          fi
+          echo "${REPOSITORY} passed."
