@@ -380,3 +380,7 @@ jobs:
         if: ${{ inputs.post_test != '' }}
         shell: bash
         run: ${{ inputs.post_test }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
