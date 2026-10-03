@@ -157,6 +157,14 @@ is for, so dispatch one as `-f dry_run=true -f tag=<the version the build will p
 non-tag guard stays off, nothing is published, and the check is exercised against a tag that
 does not exist yet, which is the one thing worth proving before it does.
 
+**A CONTAINER cell needs the workspace marked safe, and the symptom names the wrong thing.**
+`actions/checkout` adds the `safe.directory` entry under a temporary `HOME` and then restores
+`HOME`, so every later git command in a container sees a workspace owned by another uid and
+refuses it. The non-tag guard then reported a tag that existed as missing, because its
+`>/dev/null 2>&1` had swallowed the refusal. Both halves are fixed: a step re-adds the entry,
+and the guard prints what git said. **A redirect that hides an error turns a precise failure
+into a confident wrong answer**, which is worth more than the two lines it saves.
+
 ## Gradle wrapper validation
 
 Every workflow here that runs `./gradlew` first checks each committed `gradle-wrapper.jar` against

@@ -146,13 +146,24 @@ jobs:
           submodules: ${{ inputs.submodules }}
           token: ${{ secrets.envPAT || github.token }}
 
+      # actions/checkout marks the workspace safe under a TEMPORARY HOME and then puts HOME back,
+      # so in a CONTAINER job every later git command sees a workspace owned by another uid and
+      # refuses it as dubious ownership. Redundant and harmless on a host runner.
+      - name: Let git read the workspace it just checked out
+        shell: bash
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Guard against publishing a non-tag ref
         if: ${{ !inputs.allow_untagged }}
         shell: bash
         env:
           TAG: ${{ steps.tag.outputs.name }}
         run: |
-          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+          # The output is kept and printed rather than redirected away: this guard once called a
+          # tag that existed missing, because the real error was a git refusal the old
+          # `>/dev/null 2>&1` had swallowed.
+          if ! listing=$(git ls-remote --exit-code --tags origin "refs/tags/$TAG" 2>&1); then
+            echo "$listing"
             echo "::error::$TAG is not a tag in this repository, so publishing it would ship an artifact versioned after a branch. Pass the tag input explicitly."
             exit 1
           fi
