@@ -274,11 +274,15 @@ jobs:
           DRAFT: ${{ inputs.draft && '--draft' || '' }}
           BODY: ${{ steps.commit_notes.outputs.text }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          # -R on every call: this job checks out only when it needs a commit message for the
+          # notes, and without a checkout gh has no git remote to infer the repository from. It
+          # says so as `failed to run git: fatal: not a git repository`, which reads like a broken
+          # runner rather than a missing flag.
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             :
           elif [ -n "$BODY" ]; then
-            gh release create "$TAG" --title "$TAG" --notes "$BODY" $PRE $DRAFT
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --title "$TAG" --notes "$BODY" $PRE $DRAFT
           else
-            gh release create "$TAG" --title "$TAG" $NOTES $PRE $DRAFT
+            gh release create "$TAG" -R "$GITHUB_REPOSITORY" --title "$TAG" $NOTES $PRE $DRAFT
           fi
-          gh release upload "$TAG" release-asset/* --clobber
+          gh release upload "$TAG" -R "$GITHUB_REPOSITORY" release-asset/* --clobber
