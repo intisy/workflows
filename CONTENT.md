@@ -114,6 +114,35 @@ The caller owns the schedule, since how often a service is worth checking is its
 `cache_bust` (on by default) appends a unique query parameter so no intermediary can serve a stale
 healthy response.
 
+## Publishing one release from several platforms
+
+`publish.yml` is single runner, so a project whose artifact is a COMPILED BINARY cannot use it to
+put a Linux, a macOS and a Windows build into one release. `publish-matrix.yml` is that case and
+only that case: a `build` job over a matrix of cells, each producing exactly one asset, and one
+`release` job that creates the release once and uploads all of them.
+
+A cell is a JSON object in the `cells` input rather than a set of per-platform inputs, because
+what differs between platforms is open ended. A static Linux build needs a musl container and an
+`apk` line; macOS needs neither and cannot be static at all. Those are input VALUES, so a consumer
+repository still holds no workflow logic. A cell requires `runner`, `binary` and `asset_name`, and
+may add `container`, `setup`, `configure`, `build` and `check`.
+
+Three behaviours matter more than they look:
+
+- **`dry_run` defaults to TRUE.** The run builds every cell and keeps each asset as a workflow
+  artifact, and creates no release. A default that publishes is one typo away from publishing by
+  accident, and a matrix is exactly the thing worth proving before it is pointed at a tag.
+- **`check` runs on each cell against the BUILT file**, with `RELEASE_TAG` and `BINARY` in its
+  environment, before the asset is staged. It is where an artifact is made to prove it is the
+  version being published: a binary and a tag that disagree make every post-download verification
+  wrong, and nothing else in a release pipeline notices.
+- **The release job counts the assets against the cells and refuses a mismatch.** A download that
+  matched nothing reads exactly like a clean run, and the release it creates is an empty release
+  nobody notices until someone tries to download from it.
+
+`fail-fast` is on deliberately: a release missing a platform is worse than no release, so the cells
+still running would be building something nobody can publish.
+
 ## Gradle wrapper validation
 
 Every workflow here that runs `./gradlew` first checks each committed `gradle-wrapper.jar` against

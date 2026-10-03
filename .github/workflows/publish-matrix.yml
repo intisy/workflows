@@ -1,0 +1,272 @@
+name: Publish matrix
+
+# publish.yml is single runner, so a project whose artifact is a compiled binary cannot build
+# several platforms into ONE release with it. This workflow is that case and only that case: a
+# matrix of build cells, each producing one asset, and a single release job that creates the
+# release once and uploads all of them.
+#
+# A cell is a JSON object in the `cells` input rather than a set of per-platform inputs, because
+# what differs between platforms is open ended: a Linux release may need a musl container and an
+# apk line where macOS needs neither. An input VALUE carries them, so a consumer repository still
+# holds no workflow logic.
+
+on:
+  workflow_call:
+    inputs:
+      cells:
+        description: >-
+          JSON array of build cells. Each object requires `runner`, `binary` (the built file, as a
+          path in the workspace) and `asset_name` (what that file is called in the release). It may
+          also carry `container` (an image the job runs in), `setup` (a command run before the
+          checkout, for packages the image lacks), `configure` and `build` (overriding the
+          workflow-level defaults for that cell alone), and `check` (a command run after the build
+          and before the asset is staged, with RELEASE_TAG and BINARY in its environment).
+        required: true
+        type: string
+      configure:
+        description: 'Default configure command for a cell that does not override it'
+        required: false
+        type: string
+        default: 'cmake -B build -DCMAKE_BUILD_TYPE=Release'
+      build:
+        description: 'Default build command for a cell that does not override it'
+        required: false
+        type: string
+        default: 'cmake --build build --config Release'
+      check:
+        description: >-
+          Default command run on every cell after its build and before its asset is staged, with
+          RELEASE_TAG and BINARY in the environment. This is where a published artifact is made to
+          prove it is the version being published; empty runs nothing.
+        required: false
+        type: string
+        default: ''
+      tag:
+        description: 'Release tag the version is taken from; empty takes the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+      allow_untagged:
+        description: 'Build a ref that is not a tag; only ever sensible together with dry_run'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: >-
+          Build every cell and keep its asset as a workflow artifact, and create NO release. This is
+          how a matrix is proved before anything is published, and it is the default: publishing is
+          a deliberate act and a default that publishes is one typo away from doing it by accident.
+        required: false
+        type: boolean
+        default: true
+      submodules:
+        required: false
+        type: string
+        default: 'recursive'
+      timeout_minutes:
+        description: 'Timeout of each build job; the release job has its own, smaller'
+        required: false
+        type: number
+        default: 60
+      retention_days:
+        description: 'How long the per-cell workflow artifacts are kept'
+        required: false
+        type: number
+        default: 7
+      generate_release_notes:
+        required: false
+        type: boolean
+        default: false
+      release_notes_from_commit:
+        description: 'Take the release body from the tagged commit message instead of generated notes'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: 'Create the release as a draft, so a human publishes it'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      envPAT:
+        required: false
+
+# No permissions block: a called workflow can only downgrade the caller's grant, so the caller
+# declares the `contents: write` the release needs.
+
+jobs:
+  build:
+    strategy:
+      # One cell failing stops the rest: a release missing a platform is worse than no release, so
+      # the cells still running would be building something nobody can publish.
+      fail-fast: true
+      matrix:
+        cell: ${{ fromJSON(inputs.cells) }}
+    runs-on: ${{ matrix.cell.runner }}
+    # Absent on a cell, this evaluates to empty and the job runs on the host.
+    container: ${{ matrix.cell.container }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Guard against a cell that cannot produce an asset
+        shell: bash
+        env:
+          BINARY: ${{ matrix.cell.binary }}
+          ASSET_NAME: ${{ matrix.cell.asset_name }}
+        run: |
+          if [ -z "$BINARY" ] || [ -z "$ASSET_NAME" ]; then
+            echo "::error::A cell needs both binary and asset_name, and this one has binary='$BINARY' asset_name='$ASSET_NAME'."
+            exit 1
+          fi
+
+      - name: Resolve the release tag
+        id: tag
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      # Before the checkout, because a minimal image can lack the git that actions/checkout needs
+      # and would otherwise fall back to the REST API and leave no repository behind.
+      - name: Run the cell's setup command
+        if: ${{ matrix.cell.setup != '' }}
+        shell: sh
+        run: ${{ matrix.cell.setup }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The condition is inverted because an expression of the form `a && '' || b` yields b:
+          # the empty then-branch is falsy, so it never wins. Same shape as publish.yml.
+          ref: ${{ !inputs.allow_untagged && steps.tag.outputs.name || '' }}
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Guard against publishing a non-tag ref
+        if: ${{ !inputs.allow_untagged }}
+        shell: bash
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::$TAG is not a tag in this repository, so publishing it would ship an artifact versioned after a branch. Pass the tag input explicitly."
+            exit 1
+          fi
+
+      - name: Configure
+        shell: bash
+        run: ${{ matrix.cell.configure || inputs.configure }}
+
+      - name: Build
+        shell: bash
+        run: ${{ matrix.cell.build || inputs.build }}
+
+      - name: Guard against a build that produced no binary
+        shell: bash
+        env:
+          BINARY: ${{ matrix.cell.binary }}
+        run: |
+          if [ ! -f "$BINARY" ]; then
+            echo "::error::The build reported success and $BINARY does not exist, so this cell would upload nothing."
+            exit 1
+          fi
+
+      # Against the built file rather than the staged copy: a check that runs on a copy proves
+      # something about the copy.
+      - name: Check the built binary
+        if: ${{ (matrix.cell.check || inputs.check) != '' }}
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+          BINARY: ${{ matrix.cell.binary }}
+        run: ${{ matrix.cell.check || inputs.check }}
+
+      - name: Stage the asset under its release name
+        shell: bash
+        env:
+          BINARY: ${{ matrix.cell.binary }}
+          ASSET_NAME: ${{ matrix.cell.asset_name }}
+        run: |
+          mkdir -p release-asset
+          cp "$BINARY" "release-asset/$ASSET_NAME"
+
+      - name: Keep the asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-matrix-${{ matrix.cell.asset_name }}
+          path: release-asset/${{ matrix.cell.asset_name }}
+          retention-days: ${{ inputs.retention_days }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve the release tag
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        if: ${{ inputs.release_notes_from_commit }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+          submodules: 'false'
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Collect every cell's asset
+        uses: actions/download-artifact@v4
+        with:
+          pattern: publish-matrix-*
+          path: release-asset
+          merge-multiple: true
+
+      # A download that matched nothing reads exactly like a clean run, and the release it created
+      # would be an empty release nobody notices until someone tries to download from it.
+      - name: Guard against a release that would carry the wrong number of assets
+        env:
+          CELLS: ${{ inputs.cells }}
+        run: |
+          expected=$(printf '%s' "$CELLS" | jq 'length')
+          found=$(find release-asset -type f | wc -l)
+          echo "$expected cells, $found assets:"
+          find release-asset -type f -exec ls -l {} +
+          if [ "$found" -ne "$expected" ]; then
+            echo "::error::$expected cells were built and $found assets arrived, so the release would be incomplete."
+            exit 1
+          fi
+
+      - name: Take the release notes from the tagged commit
+        id: commit_notes
+        if: ${{ inputs.release_notes_from_commit }}
+        run: |
+          {
+            echo 'text<<NOTES_EOF'
+            git log -1 --pretty=%B
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+          NOTES: ${{ inputs.generate_release_notes && '--generate-notes' || '' }}
+          PRE: ${{ inputs.prerelease && '--prerelease' || '' }}
+          DRAFT: ${{ inputs.draft && '--draft' || '' }}
+          BODY: ${{ steps.commit_notes.outputs.text }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            :
+          elif [ -n "$BODY" ]; then
+            gh release create "$TAG" --title "$TAG" --notes "$BODY" $PRE $DRAFT
+          else
+            gh release create "$TAG" --title "$TAG" $NOTES $PRE $DRAFT
+          fi
+          gh release upload "$TAG" release-asset/* --clobber
