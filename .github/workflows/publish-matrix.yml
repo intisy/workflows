@@ -17,8 +17,8 @@ on:
         description: >-
           JSON array of build cells. Each object requires `runner`, `binary` (the built file, as a
           path in the workspace) and `asset_name` (what that file is called in the release). It may
-          also carry `container` (an image the job runs in), `setup` (the FIRST step, for packages a
-          minimal image lacks, with `setup_shell` picking its shell and defaulting to `sh`), `configure` and `build` (overriding the
+          also carry `container` (an image the job runs in), `setup` (the FIRST step, run under `sh`, for
+          packages a minimal image lacks), `configure` and `build` (overriding the
           workflow-level defaults for that cell alone), and `check` (a command run after the build
           and before the asset is staged, with RELEASE_TAG and BINARY in its environment).
         required: true
@@ -116,7 +116,7 @@ jobs:
       # in an alpine container fails with exit 127 before it reads its own first line.
       - name: Run the cell's setup command
         if: ${{ matrix.cell.setup != '' }}
-        shell: ${{ matrix.cell.setup_shell || 'sh' }}
+        shell: sh
         run: ${{ matrix.cell.setup }}
 
       - name: Guard against a cell that cannot produce an asset
