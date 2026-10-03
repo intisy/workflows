@@ -147,6 +147,11 @@ Three behaviours matter more than they look:
 `fail-fast` is on deliberately: a release missing a platform is worse than no release, so the cells
 still running would be building something nobody can publish.
 
+**A cell whose container is minimal must install the shell the workflow uses.** Every step here
+declares `shell: bash`, and `alpine` has no bash, nor the `git` that the checkout and the
+non-tag guard need. The cell's `setup` command runs BEFORE the checkout for exactly that reason,
+and it is the one step declared `shell: sh`.
+
 ## Gradle wrapper validation
 
 Every workflow here that runs `./gradlew` first checks each committed `gradle-wrapper.jar` against
