@@ -145,8 +145,10 @@ still running would be building something nobody can publish.
 
 **A cell whose container is minimal must install the shell the workflow uses.** Every step here
 declares `shell: bash`, and `alpine` has no bash, nor the `git` that the checkout and the
-non-tag guard need. The cell's `setup` command runs BEFORE the checkout for exactly that reason,
-and it is the one step declared `shell: sh`.
+non-tag guard need. So `setup` is the FIRST step in the job, before even the guard that
+validates the cell, and the only one that is not `shell: bash`: `setup_shell` picks its shell
+and defaults to `sh`. Measured the hard way, because a `shell: bash` step in an alpine
+container does not report a missing bash, it exits 127 having run none of its own lines.
 
 ## Gradle wrapper validation
 

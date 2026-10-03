@@ -17,8 +17,8 @@ on:
         description: >-
           JSON array of build cells. Each object requires `runner`, `binary` (the built file, as a
           path in the workspace) and `asset_name` (what that file is called in the release). It may
-          also carry `container` (an image the job runs in), `setup` (a command run before the
-          checkout, for packages the image lacks), `configure` and `build` (overriding the
+          also carry `container` (an image the job runs in), `setup` (the FIRST step, for packages a
+          minimal image lacks, with `setup_shell` picking its shell and defaulting to `sh`), `configure` and `build` (overriding the
           workflow-level defaults for that cell alone), and `check` (a command run after the build
           and before the asset is staged, with RELEASE_TAG and BINARY in its environment).
         required: true
@@ -111,6 +111,14 @@ jobs:
     container: ${{ matrix.cell.container }}
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
+      # FIRST, and the only step not declared `shell: bash`. A minimal image has neither bash nor
+      # the git actions/checkout needs, so every other step depends on it having run: a bash step
+      # in an alpine container fails with exit 127 before it reads its own first line.
+      - name: Run the cell's setup command
+        if: ${{ matrix.cell.setup != '' }}
+        shell: ${{ matrix.cell.setup_shell || 'sh' }}
+        run: ${{ matrix.cell.setup }}
+
       - name: Guard against a cell that cannot produce an asset
         shell: bash
         env:
@@ -128,13 +136,6 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-
-      # Before the checkout, because a minimal image can lack the git that actions/checkout needs
-      # and would otherwise fall back to the REST API and leave no repository behind.
-      - name: Run the cell's setup command
-        if: ${{ matrix.cell.setup != '' }}
-        shell: sh
-        run: ${{ matrix.cell.setup }}
 
       - name: Checkout
         uses: actions/checkout@v4
