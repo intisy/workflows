@@ -131,6 +131,23 @@ wrapper, in which case regenerate it with `./gradlew wrapper --gradle-version <v
 wrapper built from source, in which case pass its checksum through `allow-checksums`. Set
 `validate_wrapper: false` on the caller to opt out, and expect to justify it.
 
+## Line endings
+
+`line_endings: true` on a `test.yml` caller fails the job when a tracked file is committed with
+CRLF. It reads `git ls-files --eol` and looks at the **index** form only, because a checkout under
+`core.autocrlf` is CRLF on disk by design and a check that read the working tree would fail every
+Windows runner while proving nothing.
+
+The repositories that need it are the ones pinning `* -text`, because that pin is what makes a
+byte-comparing test hold on Windows and is also what removes git's own normalisation. Any writer
+that emits CRLF then lands CRLF in the blob, and nothing says so: three such flips went unnoticed
+in one ecosystem until an audit went looking for them.
+
+It is **off by default**, because fourteen repositories here carry CRLF blobs today and
+renormalising them is its own piece of work rather than something a shared workflow should spring
+on them. Turn it on per repository, and name a legitimate exception with
+`line_endings_exempt: '*.bat'`. The fix for a real hit is `git add --renormalize .` and a commit.
+
 ## Reusable workflows and this repository's own
 
 Every file in `.github/workflows/` here is a reusable workflow that other repositories call,

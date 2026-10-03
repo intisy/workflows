@@ -1,0 +1,39 @@
+name: Check line endings
+description: >-
+  Fails when a tracked file is committed with CRLF, which a repository pinning `* -text` has no
+  other defence against: that pin is what makes its byte-comparing tests hold on Windows, and it
+  is also what removes core.autocrlf's rescue, so any writer that emits CRLF lands CRLF in the
+  blob and nothing says so.
+
+inputs:
+  enabled:
+    description: The literal false skips the check entirely
+    required: false
+    default: 'true'
+  exempt:
+    description: >-
+      Space or comma separated path patterns that may hold CRLF, for a Windows batch file or a
+      fixture whose endings are the thing under test. `*` stops at a separator and `**` does not.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      if: ${{ inputs.enabled != 'false' }}
+      with:
+        node-version: '24'
+
+    # The INDEX form, never the working tree: a checkout under core.autocrlf is
+    # CRLF on disk by design, so a check that read files would fail every
+    # Windows runner and prove nothing.
+    - name: Check the committed blobs
+      if: ${{ inputs.enabled != 'false' }}
+      shell: bash
+      env:
+        EXEMPT: ${{ inputs.exempt }}
+      run: |
+        set -euo pipefail
+        git ls-files --eol | node "${{ github.action_path }}/check.ts" --exempt "$EXEMPT"

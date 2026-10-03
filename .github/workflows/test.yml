@@ -126,6 +126,20 @@ on:
         required: false
         type: string
         default: ''
+      line_endings:
+        description: >-
+          Fail when a tracked file is committed with CRLF. Off by default because fourteen
+          repositories in this ecosystem carry CRLF blobs today and renormalising them is separate
+          work; a repository pinning `* -text` should set it true, since that pin is exactly what
+          removes git's own rescue.
+        required: false
+        type: boolean
+        default: false
+      line_endings_exempt:
+        description: 'Space or comma separated paths that may hold CRLF, such as *.bat'
+        required: false
+        type: string
+        default: ''
       apt_packages:
         description: 'Space-separated apt packages installed before the toolchain steps, for a build needing system headers a runner image ships without. Runs on Linux runners only, so a macOS or Windows runner in the same matrix needs nothing set.'
         required: false
@@ -172,6 +186,17 @@ jobs:
           ref: ${{ inputs.ref }}
           submodules: ${{ inputs.submodules }}
           token: ${{ secrets.envPAT || github.token }}
+
+      # Before any toolchain, because a CRLF blob reddens one platform for a
+      # reason that has nothing to do with the change, and the point is to say
+      # so rather than to let a byte comparison fail later and elsewhere. It
+      # runs on every runner rather than only Linux: the answer is the same
+      # everywhere, and gating it would let a Windows-only matrix skip it.
+      - name: Check line endings
+        if: ${{ inputs.line_endings }}
+        uses: intisy/workflows/.github/actions/check-line-endings@main
+        with:
+          exempt: ${{ inputs.line_endings_exempt }}
 
       - name: Checkout the sibling repository
         if: ${{ inputs.extra_repository != '' }}
