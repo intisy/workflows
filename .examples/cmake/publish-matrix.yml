@@ -41,7 +41,7 @@ jobs:
           {
             "runner": "ubuntu-latest",
             "container": "alpine:3.21",
-            "setup": "apk add --no-cache build-base cmake curl-dev curl-static openssl-libs-static zlib-static nghttp2-static brotli-static zstd-static libidn2-static libunistring-static libpsl-static pkgconf git",
+            "setup": "apk add --no-cache bash build-base cmake curl-dev curl-static openssl-libs-static zlib-static nghttp2-static brotli-static zstd-static libidn2-static libunistring-static libpsl-static pkgconf git",
             "configure": "cmake -B build -DCMAKE_BUILD_TYPE=Release -DDAUKLE_STATIC=ON",
             "binary": "build/daukle",
             "asset_name": "daukle-linux-x86_64"
