@@ -4,8 +4,10 @@ name: Release
 # publish.yml cannot do: it is single runner. Each cell below is an input VALUE, so this file
 # still holds no logic.
 #
-# dry_run defaults to true. Dispatch it once untagged to prove every cell builds, read the
-# workflow artifacts, and only then tag and let the push run it for real.
+# dry_run defaults to true. Dispatch it as `-f dry_run=true -f tag=<the version the build will
+# print>` to prove every cell builds AND that the check agrees with that version, read the
+# workflow artifacts, and only then tag and let the push run it for real. Without the tag the
+# check compares the binary against a branch name and correctly refuses.
 
 on:
   workflow_dispatch:

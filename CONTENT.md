@@ -150,6 +150,13 @@ validates the cell, and the only one that is not `shell: bash`: it runs under `s
 the hard way, because a `shell: bash` step in an alpine container does not report a missing
 bash, it exits 127 having run none of its own lines.
 
+**A dry run still wants a `tag`, and the reason is the `check`.** Untagged, `RELEASE_TAG` is the
+branch name, so a check comparing it against a version refuses the build and says the binary is
+`0.1.0` and is being published as `main`. That refusal is correct and it is not what a dry run
+is for, so dispatch one as `-f dry_run=true -f tag=<the version the build will print>`: the
+non-tag guard stays off, nothing is published, and the check is exercised against a tag that
+does not exist yet, which is the one thing worth proving before it does.
+
 ## Gradle wrapper validation
 
 Every workflow here that runs `./gradlew` first checks each committed `gradle-wrapper.jar` against
