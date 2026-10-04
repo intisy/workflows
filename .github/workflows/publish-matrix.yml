@@ -41,6 +41,16 @@ on:
         required: false
         type: string
         default: ''
+      finalize:
+        description: >-
+          Command run in the release job once every cell's asset has arrived and before the release
+          is created, with RELEASE_TAG and ASSET_DIR in the environment. Whatever it writes into
+          ASSET_DIR is published alongside the binaries. This is for an asset that can only be
+          derived from the others, a checksum file or a pin naming their digests, which no single
+          cell can produce because no cell sees another's output. Empty runs nothing.
+        required: false
+        type: string
+        default: ''
       tag:
         description: 'Release tag the version is taken from; empty takes the ref the run was started from'
         required: false
@@ -225,8 +235,10 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: echo "name=${TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
+      # Unconditional since `finalize` arrived: that command lives in the consumer repository, so
+      # the job that runs it needs the repository. It used to be gated on the release notes, which
+      # made a finalize command fail as "not found" in an empty workspace.
       - name: Checkout
-        if: ${{ inputs.release_notes_from_commit }}
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.tag.outputs.name }}
@@ -255,6 +267,20 @@ jobs:
             exit 1
           fi
 
+      # After the count guard, so a finalize command cannot mask a missing cell by adding a file,
+      # and before the release is created, so what it writes is published in the same upload rather
+      # than appearing on a release that already exists.
+      - name: Derive the assets no single cell could produce
+        if: ${{ inputs.finalize != '' }}
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.name }}
+          ASSET_DIR: ${{ github.workspace }}/release-asset
+        run: ${{ inputs.finalize }}
+
+      - name: Report what the release will carry
+        if: ${{ inputs.finalize != '' }}
+        run: find release-asset -type f -exec ls -l {} +
+
       - name: Take the release notes from the tagged commit
         id: commit_notes
         if: ${{ inputs.release_notes_from_commit }}
@@ -274,10 +300,11 @@ jobs:
           DRAFT: ${{ inputs.draft && '--draft' || '' }}
           BODY: ${{ steps.commit_notes.outputs.text }}
         run: |
-          # -R on every call: this job checks out only when it needs a commit message for the
-          # notes, and without a checkout gh has no git remote to infer the repository from. It
-          # says so as `failed to run git: fatal: not a git repository`, which reads like a broken
-          # runner rather than a missing flag.
+          # -R on every call. It is no longer load bearing now that the checkout above is
+          # unconditional, and it stays because the alternative is a flag whose absence only breaks
+          # if someone makes that checkout conditional again. Without one, gh has no git remote to
+          # infer the repository from and says `failed to run git: fatal: not a git repository`,
+          # which reads like a broken runner rather than a missing flag.
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             :
           elif [ -n "$BODY" ]; then
