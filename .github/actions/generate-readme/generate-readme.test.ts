@@ -523,6 +523,19 @@ describe("examples section", () => {
     expect(readme).toContain("- [`plain`](examples/plain): Just prose, no heading.");
   });
 
+  /* A repository that IS a collection of examples keeps them at its root.
+     daukle/examples is the case this exists for. */
+  it("honours examples_root for a repository whose examples are at the root", async () => {
+    const { readme } = await build({
+      ".github/docs-config.yml": config({ kind: "generic", title: "Thing", examples_root: "." }),
+      "at-the-root/ABOUT.md": "# at-the-root\n\nLives at the top.\n",
+      "test/run.sh": "#!/bin/sh\n",
+    });
+    expect(readme).toContain("- [`at-the-root`](at-the-root): Lives at the top.");
+    expect(readme).not.toContain("(./at-the-root)");
+    expect(readme).not.toContain("test/run.sh");
+  });
+
   describe("firstSentence", () => {
     it("takes the first sentence and collapses the newlines inside it", () => {
       expect(firstSentence(ABOUT_C)).toBe("A managed C project.");
