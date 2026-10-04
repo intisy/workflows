@@ -729,8 +729,11 @@ export function firstSentence(markdown: string): string {
     const paragraph = block.trim();
     if (paragraph === "" || paragraph.startsWith("#") || paragraph.startsWith("```")) continue;
     const collapsed = paragraph.replace(/\s+/g, " ");
-    const stop = collapsed.search(/\.(\s|$)/);
-    return stop === -1 ? collapsed : collapsed.slice(0, stop + 1);
+    /* The closing run matters: an ABOUT.md that opens with a bold sentence ends
+       it "point.**", where a bare /\.\s/ finds no break and swallows the next
+       sentence too. Measured on daukle/examples, where all three did. */
+    const end = /\.[*_`)"\]]*(\s|$)/.exec(collapsed);
+    return end === null ? collapsed : collapsed.slice(0, end.index + end[0].length).trim();
   }
   return "";
 }
