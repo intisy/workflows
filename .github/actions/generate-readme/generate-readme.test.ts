@@ -10,6 +10,8 @@ import {
   detectLicense,
   generate,
   parseConfig,
+  findExamples,
+  firstSentence,
   readJson,
   releaseModules,
   versionKey,
@@ -471,5 +473,74 @@ describe("version keys", () => {
       return 0;
     });
     expect(sorted).toEqual(["1.9.0", "1.10.0"]);
+  });
+});
+
+describe("examples section", () => {
+  const ABOUT_C = "# c-hello-executable\n\nA managed C project. The repository holds "
+    + "`daukle.toml` and\nno build file at all.\n\n## What this cannot show\n\nA bare host.\n";
+
+  it("renders one line per example, sorted, with the first sentence", async () => {
+    const { readme } = await build({
+      ".github/docs-config.yml": config({ kind: "generic", title: "Thing", description: "Does things." }),
+      "examples/second/ABOUT.md": "# second\n\nThe other one.\n",
+      "examples/first/ABOUT.md": ABOUT_C,
+    });
+    expect(readme).toContain("## Examples\n\n"
+      + "- [`c-hello-executable`](examples/first): A managed C project.\n"
+      + "- [`second`](examples/second): The other one.");
+  });
+
+  /* The whole point of adding this to every generic repository: the ones with no
+     examples must render exactly what they rendered before. */
+  it("is absent when the repository has no examples", async () => {
+    const { readme } = await build({
+      ".github/docs-config.yml": config({ kind: "generic", title: "Thing", description: "Does things." }),
+      "CONTENT.md": "Generic prose.\n",
+      LICENSE: APACHE,
+    });
+    expect(readme).not.toContain("## Examples");
+    expect(readme).toBe("# Thing\n\nDoes things.\n\nGeneric prose.\n\n## License\n\n"
+      + "[![Apache License 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)]"
+      + "(LICENSE)\n");
+  });
+
+  it("skips a directory that carries no ABOUT.md", async () => {
+    const { readme } = await build({
+      ".github/docs-config.yml": config({ kind: "generic", title: "Thing" }),
+      "examples/documented/ABOUT.md": "# documented\n\nHas one.\n",
+      "examples/undocumented/daukle.toml": "schema = 1\n",
+    });
+    expect(readme).toContain("- [`documented`](examples/documented): Has one.");
+    expect(readme).not.toContain("undocumented");
+  });
+
+  it("falls back to the directory name when ABOUT.md has no heading", async () => {
+    const { readme } = await build({
+      ".github/docs-config.yml": config({ kind: "generic", title: "Thing" }),
+      "examples/plain/ABOUT.md": "Just prose, no heading.\n",
+    });
+    expect(readme).toContain("- [`plain`](examples/plain): Just prose, no heading.");
+  });
+
+  describe("firstSentence", () => {
+    it("takes the first sentence and collapses the newlines inside it", () => {
+      expect(firstSentence(ABOUT_C)).toBe("A managed C project.");
+      expect(firstSentence("# t\n\nOne line\nwrapped here. And more.\n"))
+        .toBe("One line wrapped here.");
+    });
+
+    it("skips headings and fenced blocks to reach the prose", () => {
+      expect(firstSentence("# title\n\n```\ncode. not prose.\n```\n\nThe prose. Rest.\n"))
+        .toBe("The prose.");
+    });
+
+    it("returns the whole paragraph when it carries no full stop", () => {
+      expect(firstSentence("# t\n\nNo full stop here\n")).toBe("No full stop here");
+    });
+
+    it("is empty when there is no prose at all", () => {
+      expect(firstSentence("# title only\n")).toBe("");
+    });
   });
 });
