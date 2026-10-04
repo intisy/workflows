@@ -57,6 +57,9 @@ const COMMON_DEFAULTS: Config = {
   license_default: "",
   license_badge: "",
   content_intro: "",
+  /* Configurable because a repository that IS a collection of examples keeps
+     them at its root rather than under examples/. daukle/examples sets ".". */
+  examples_root: "examples",
   tag_filter: "",
   tag_fallback: "1.0.0",
   default_branch: "",
@@ -748,13 +751,14 @@ export function findExamples(root = "examples"): ExampleEntry[] {
     return [];
   }
 
+  const prefix = root === "." || root === "" ? "" : `${root}/`;
   const found: ExampleEntry[] = [];
   for (const entry of entries.sort()) {
     const text = readTextFile(join(root, entry, "ABOUT.md"));
     if (text === "") continue;
     const heading = /^#\s+(.+)$/m.exec(text);
     found.push({
-      directory: `${root}/${entry}`,
+      directory: `${prefix}${entry}`,
       title: heading ? heading[1].trim() : entry,
       summary: firstSentence(text),
     });
@@ -766,8 +770,8 @@ export function findExamples(root = "examples"): ExampleEntry[] {
  * Absent rather than empty when a repository has no examples, so adding this to
  * every `generic` repository costs the ones without any nothing at all.
  */
-function renderExamples(_ctx: Context): string | null {
-  const examples = findExamples();
+function renderExamples(ctx: Context): string | null {
+  const examples = findExamples(ctx.get("examples_root"));
   if (examples.length === 0) return null;
   const lines = examples.map((example) => {
     const link = `- [\`${example.title}\`](${example.directory})`;
