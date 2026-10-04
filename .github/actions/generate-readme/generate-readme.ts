@@ -156,7 +156,7 @@ export const KINDS: Record<string, Kind> = {
     },
   ),
   generic: kind(
-    ["logo", "title", "badges", "description", "content", "license-badge"],
+    ["logo", "title", "badges", "description", "examples", "content", "license-badge"],
     ["repo"],
   ),
 };
@@ -709,6 +709,73 @@ function renderRequirements(ctx: Context): string | null {
   return "## Requirements\n" + items.map((item) => "- " + item).join("\n");
 }
 
+/** One example discovered under examples/, as its own ABOUT.md describes it. */
+export interface ExampleEntry {
+  readonly directory: string;
+  readonly title: string;
+  readonly summary: string;
+}
+
+/**
+ * The first sentence of the first prose paragraph. An ABOUT.md opens with a
+ * paragraph several lines long whose first sentence is the summary, so rendering
+ * the whole paragraph would flood a list that exists to be scanned.
+ */
+export function firstSentence(markdown: string): string {
+  for (const block of markdown.split(/\n\s*\n/)) {
+    const paragraph = block.trim();
+    if (paragraph === "" || paragraph.startsWith("#") || paragraph.startsWith("```")) continue;
+    const collapsed = paragraph.replace(/\s+/g, " ");
+    const stop = collapsed.search(/\.(\s|$)/);
+    return stop === -1 ? collapsed : collapsed.slice(0, stop + 1);
+  }
+  return "";
+}
+
+/**
+ * Every `examples/<name>/ABOUT.md` in the repository being documented, sorted by
+ * directory so the rendered order does not depend on the filesystem's.
+ *
+ * This repository only, deliberately. An org-wide version would need a
+ * hand-maintained list of repositories to scan and a token for each, which is
+ * the kind of thing a README generator should not own.
+ */
+export function findExamples(root = "examples"): ExampleEntry[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return [];
+  }
+
+  const found: ExampleEntry[] = [];
+  for (const entry of entries.sort()) {
+    const text = readTextFile(join(root, entry, "ABOUT.md"));
+    if (text === "") continue;
+    const heading = /^#\s+(.+)$/m.exec(text);
+    found.push({
+      directory: `${root}/${entry}`,
+      title: heading ? heading[1].trim() : entry,
+      summary: firstSentence(text),
+    });
+  }
+  return found;
+}
+
+/**
+ * Absent rather than empty when a repository has no examples, so adding this to
+ * every `generic` repository costs the ones without any nothing at all.
+ */
+function renderExamples(_ctx: Context): string | null {
+  const examples = findExamples();
+  if (examples.length === 0) return null;
+  const lines = examples.map((example) => {
+    const link = `- [\`${example.title}\`](${example.directory})`;
+    return example.summary === "" ? link : `${link}: ${example.summary}`;
+  });
+  return "## Examples\n\n" + lines.join("\n");
+}
+
 function renderContent(ctx: Context): string | null {
   if (!ctx.content) return null;
   const intro = ctx.get("content_intro");
@@ -903,6 +970,7 @@ export const SECTIONS: [string, Renderer][] = [
   ["library-usage-public", renderLibraryUsagePublic],
   ["modules", renderModules],
   ["npm-install", renderNpmInstall],
+  ["examples", renderExamples],
   ["content", renderContent],
   ["developer-api", renderDeveloperApi],
   ["wiki", renderWiki],
