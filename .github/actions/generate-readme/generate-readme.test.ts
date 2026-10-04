@@ -543,6 +543,13 @@ describe("examples section", () => {
         .toBe("One line wrapped here.");
     });
 
+    it("stops at a sentence that closes with markdown emphasis", () => {
+      expect(firstSentence("# t\n\n**The point.** And then more of it.\n"))
+        .toBe("**The point.**");
+      expect(firstSentence("# t\n\nA `code.span` inside. Next.\n"))
+        .toBe("A `code.span` inside.");
+    });
+
     it("skips headings and fenced blocks to reach the prose", () => {
       expect(firstSentence("# title\n\n```\ncode. not prose.\n```\n\nThe prose. Rest.\n"))
         .toBe("The prose.");
