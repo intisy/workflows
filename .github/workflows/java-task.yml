@@ -1,6 +1,10 @@
 # Runs one java command with the caller's variables and secrets placed in the environment as JSON
 # blobs, plus anything the caller computed for this run. The callee program selects what it needs
 # from them, so this file names no variable.
+#
+# A caller in another owner than this repository must pass secrets_json and vars_json itself:
+# GitHub honours `secrets: inherit` only within one organization, so across owners the secrets
+# context here is empty and the run starts with no credentials.
 name: java-task
 
 on:
@@ -23,6 +27,15 @@ on:
         required: false
         type: string
         default: '{}'
+      vars_json:
+        description: 'The caller passes toJSON(vars) here when it is in another owner than this repository'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      secrets_json:
+        description: 'The caller passes toJSON(secrets) here when it is in another owner than this repository'
+        required: false
     outputs:
       offload:
         description: 'Whether the command asked for an offload turn'
@@ -46,6 +59,6 @@ jobs:
       - id: task
         run: ${{ inputs.command }}
         env:
-          ALL_VARS: ${{ toJSON(vars) }}
-          ALL_SECRETS: ${{ toJSON(secrets) }}
+          ALL_VARS: ${{ inputs.vars_json || toJSON(vars) }}
+          ALL_SECRETS: ${{ secrets.secrets_json || toJSON(secrets) }}
           EXTRA_ENV: ${{ inputs.extra_env }}
