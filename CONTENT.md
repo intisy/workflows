@@ -86,6 +86,41 @@ prints the whole table with the current repository's values in it.
 The generator is TypeScript that Node runs directly, with no build step and no dependency.
 Its own tests run offline, with no network: `npm test`.
 
+## Regenerating a file that is not a README
+
+`regenerate.yml` runs a repository's own generator and commits what it wrote, for a generated file
+`readme.yml` cannot produce. It is deliberately not a generalisation of `readme.yml`: that workflow
+hardcodes `README.md` in its commit step and thirteen repositories call it, so widening it would
+reach all of them to serve one.
+
+```yaml
+jobs:
+  regenerate:
+    uses: intisy/workflows/.github/workflows/regenerate.yml@main
+    with:
+      branch: development
+      command: npm run generate
+      paths: plugins.json
+      skip_if_only: generatedAt
+    secrets:
+      envPAT: ${{ secrets.PAT }}
+```
+
+The `command` is the repository's own, because that is where the logic already lives, and `paths`
+takes `merge.yml`'s `generated_paths` spelling so a caller that regenerates and then promotes reads
+alike. **The promotion is not here**: `merge.yml` already does it, and `regenerate.yml` publishes a
+`committed` output so a caller can gate it on something having changed.
+
+**`skip_if_only` is the input the design turns on.** A generator that stamps its own run into its
+output changes its file on every run, so a scheduled job committing whatever it wrote would commit
+every night forever, and each commit would start CI in a repository where every push does. When
+every changed line carries this text, the change is that stamp and nothing else, the paths are put
+back and nothing is committed. A file whose only change is its `"generatedAt"` line is the measured
+case; empty compares nothing and commits any change.
+
+What it reports a change for deliberately: an added, deleted or renamed path, whatever its lines
+say, and a binary file, which reports a modification and no comparable lines at all.
+
 ## Deploying and monitoring a service
 
 `deploy-cloudflare.yml` publishes a Cloudflare Worker. `checks` is a newline separated list of

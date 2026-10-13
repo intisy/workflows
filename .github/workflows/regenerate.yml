@@ -1,0 +1,105 @@
+name: Regenerate
+
+# Runs a repository's own generator and commits what it wrote, so a generated
+# file that nothing regenerates cannot sit stale while looking live.
+#
+# The promotion to a default branch is NOT here: merge.yml already does it, and
+# its generated_paths input takes the same spelling as this workflow's paths.
+
+on:
+  workflow_call:
+    inputs:
+      branch:
+        description: >-
+          Branch the generator runs on and the commit lands on. No default: a generated file belongs
+          on whichever branch the repository develops on, and that is not the same branch everywhere.
+        required: true
+        type: string
+      command:
+        description: >-
+          What to run, e.g. "npm run generate". The logic stays in the repository, where it already
+          lives; chain an install with && if the generator has dependencies.
+        required: true
+        type: string
+      paths:
+        description: >-
+          Newline separated file paths the generator writes, matching merge.yml's generated_paths
+          spelling. Files only, not directories.
+        required: true
+        type: string
+      skip_if_only:
+        description: >-
+          Text identifying a line the generator rewrites on every run, such as a timestamp key. When
+          every changed line carries it, nothing is committed. Empty commits any change.
+        required: false
+        type: string
+        default: ''
+      commit_message:
+        description: 'Commit message for the regenerated files'
+        required: false
+        type: string
+        default: 'chore: regenerate generated files [skip ci]'
+      node_version:
+        description: 'Node.js version the command runs under; empty installs none'
+        required: false
+        type: string
+        default: '20'
+    outputs:
+      committed:
+        description: true when a commit was made, so a caller can gate its promotion on it
+        value: ${{ jobs.regenerate.outputs.committed }}
+    secrets:
+      envPAT:
+        description: >-
+          Token the generator and the push use; falls back to the job token, which cannot push to a
+          protected branch and is rate limited against another repository's API.
+        required: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      committed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Setup Node.js
+        if: ${{ inputs.node_version != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Regenerate
+        shell: bash
+        run: ${{ inputs.command }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      - name: Did anything actually change
+        id: diff
+        uses: intisy/workflows/.github/actions/generated-diff@main
+        with:
+          paths: ${{ inputs.paths }}
+          skip_if_only: ${{ inputs.skip_if_only }}
+
+      # The step above staged exactly the named paths, with --force so a gitignored generated file
+      # is included, so this commits those and nothing else the generator happened to touch.
+      - name: Commit changes
+        if: steps.diff.outputs.changed == 'true'
+        shell: bash
+        env:
+          COMMIT_MESSAGE: ${{ inputs.commit_message }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --message "$COMMIT_MESSAGE"
+          git push origin "HEAD:$BRANCH"
