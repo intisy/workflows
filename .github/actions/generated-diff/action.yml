@@ -1,0 +1,43 @@
+name: Generated diff
+description: >-
+  Whether regenerated paths hold a change worth committing, reverting them when the only change is a
+  run stamp the generator writes on every run. Leaves the paths STAGED when they do, so a caller
+  commits them without adding anything itself.
+
+inputs:
+  paths:
+    description: >-
+      Newline separated file paths the generator writes. Files only, not directories.
+    required: true
+  skip_if_only:
+    description: >-
+      Text that identifies a line a generator rewrites on every run, such as a timestamp key. When
+      every changed line carries it the paths are put back and the result is false. Empty compares
+      nothing and reports any change.
+    required: false
+    default: ''
+
+outputs:
+  changed:
+    description: true when the paths hold a change worth committing
+    value: ${{ steps.diff.outputs.changed }}
+
+runs:
+  using: composite
+  steps:
+    # Pinned, not an input: Node runs the TypeScript directly and only 24 and above can.
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    # Node runs the TypeScript directly, so there is no build step and nothing to install.
+    - name: Diff the generated paths
+      id: diff
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+        SKIP_IF_ONLY: ${{ inputs.skip_if_only }}
+      run: |
+        node "${{ github.action_path }}/diff.ts" >> "$GITHUB_OUTPUT"
+        cat "$GITHUB_OUTPUT"
