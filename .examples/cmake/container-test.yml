@@ -1,0 +1,16 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: intisy/workflows/.github/workflows/container-test.yml@main
+    with:
+      dockerfile: ci/Dockerfile
+      context: ci
+      command: sh ci/build-and-test.sh
+    secrets:
+      envPAT: ${{ secrets.PAT }}
