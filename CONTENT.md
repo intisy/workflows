@@ -121,6 +121,14 @@ case; empty compares nothing and commits any change.
 What it reports a change for deliberately: an added, deleted or renamed path, whatever its lines
 say, and a binary file, which reports a modification and no comparable lines at all.
 
+## Testing inside the repository's own image
+
+`container-test.yml` builds the image a repository defines in its own Dockerfile and runs one
+command in it with the checkout at `/work`. It exists for builds whose tools no runner image has,
+such as a MinGW-w64 cross compiler, musl or wine, and it keeps those tools in the repository that
+needs them rather than in this one. The command is the repository's own script, so the logic stays
+there; `.examples/cmake/container-test.yml` is the caller.
+
 ## Deploying and monitoring a service
 
 `deploy-cloudflare.yml` publishes a Cloudflare Worker. `checks` is a newline separated list of

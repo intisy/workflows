@@ -1,0 +1,65 @@
+name: Container test
+
+# A repository whose build needs tools no runner image has (cross compilers, musl, wine) defines
+# them in its own Dockerfile; this workflow builds that image and runs the repository's command in it.
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        description: 'Dockerfile that defines the build image, relative to the repository root'
+        required: false
+        type: string
+        default: 'Dockerfile'
+      context:
+        description: 'Build context of the image, relative to the repository root'
+        required: false
+        type: string
+        default: '.'
+      command:
+        description: 'Command run by sh inside the image, with the checkout mounted at /work'
+        required: true
+        type: string
+      submodules:
+        description: 'Passed to actions/checkout; recursive, true or false'
+        required: false
+        type: string
+        default: 'recursive'
+      ref:
+        description: 'Ref to test; empty tests the ref the run was started from'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        required: false
+        type: number
+        default: 60
+    secrets:
+      envPAT:
+        description: 'Token used for the checkout, for private submodules; falls back to the job token'
+        required: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Build the image
+        shell: bash
+        env:
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          CONTEXT: ${{ inputs.context }}
+        run: docker build --file "$DOCKERFILE" --tag container-test "$CONTEXT"
+
+      - name: Run the command in the image
+        shell: bash
+        env:
+          COMMAND: ${{ inputs.command }}
+        run: docker run --rm --volume "$GITHUB_WORKSPACE:/work" --workdir /work container-test sh -c "$COMMAND"
