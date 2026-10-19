@@ -90,6 +90,49 @@ prints the whole table with the current repository's values in it.
 The generator is TypeScript that Node runs directly, with no build step and no dependency.
 Its own tests run offline, with no network: `npm test`.
 
+## Regenerating a file that is not a README
+
+`regenerate.yml` runs a repository's own generator and commits what it wrote, for a generated file
+`readme.yml` cannot produce. It is deliberately not a generalisation of `readme.yml`: that workflow
+hardcodes `README.md` in its commit step and thirteen repositories call it, so widening it would
+reach all of them to serve one.
+
+```yaml
+jobs:
+  regenerate:
+    uses: intisy/workflows/.github/workflows/regenerate.yml@main
+    with:
+      branch: development
+      command: npm run generate
+      paths: plugins.json
+      skip_if_only: generatedAt
+    secrets:
+      envPAT: ${{ secrets.PAT }}
+```
+
+The `command` is the repository's own, because that is where the logic already lives, and `paths`
+takes `merge.yml`'s `generated_paths` spelling so a caller that regenerates and then promotes reads
+alike. **The promotion is not here**: `merge.yml` already does it, and `regenerate.yml` publishes a
+`committed` output so a caller can gate it on something having changed.
+
+**`skip_if_only` is the input the design turns on.** A generator that stamps its own run into its
+output changes its file on every run, so a scheduled job committing whatever it wrote would commit
+every night forever, and each commit would start CI in a repository where every push does. When
+every changed line carries this text, the change is that stamp and nothing else, the paths are put
+back and nothing is committed. A file whose only change is its `"generatedAt"` line is the measured
+case; empty compares nothing and commits any change.
+
+What it reports a change for deliberately: an added, deleted or renamed path, whatever its lines
+say, and a binary file, which reports a modification and no comparable lines at all.
+
+## Testing inside the repository's own image
+
+`container-test.yml` builds the image a repository defines in its own Dockerfile and runs one
+command in it with the checkout at `/work`. It exists for builds whose tools no runner image has,
+such as a MinGW-w64 cross compiler, musl or wine, and it keeps those tools in the repository that
+needs them rather than in this one. The command is the repository's own script, so the logic stays
+there; `.examples/cmake/container-test.yml` is the caller.
+
 ## Deploying and monitoring a service
 
 `deploy-cloudflare.yml` publishes a Cloudflare Worker. `checks` is a newline separated list of
@@ -146,6 +189,28 @@ Three behaviours matter more than they look:
 
 `fail-fast` is on deliberately: a release missing a platform is worse than no release, so the cells
 still running would be building something nobody can publish.
+
+**A cell whose container is minimal must install the shell the workflow uses.** Every step here
+declares `shell: bash`, and `alpine` has no bash, nor the `git` that the checkout and the
+non-tag guard need. So `setup` is the FIRST step in the job, before even the guard that
+validates the cell, and the only one that is not `shell: bash`: it runs under `sh`. Measured
+the hard way, because a `shell: bash` step in an alpine container does not report a missing
+bash, it exits 127 having run none of its own lines.
+
+**A dry run still wants a `tag`, and the reason is the `check`.** Untagged, `RELEASE_TAG` is the
+branch name, so a check comparing it against a version refuses the build and says the binary is
+`0.1.0` and is being published as `main`. That refusal is correct and it is not what a dry run
+is for, so dispatch one as `-f dry_run=true -f tag=<the version the build will print>`: the
+non-tag guard stays off, nothing is published, and the check is exercised against a tag that
+does not exist yet, which is the one thing worth proving before it does.
+
+**A CONTAINER cell needs the workspace marked safe, and the symptom names the wrong thing.**
+`actions/checkout` adds the `safe.directory` entry under a temporary `HOME` and then restores
+`HOME`, so every later git command in a container sees a workspace owned by another uid and
+refuses it. The non-tag guard then reported a tag that existed as missing, because its
+`>/dev/null 2>&1` had swallowed the refusal. Both halves are fixed: a step re-adds the entry,
+and the guard prints what git said. **A redirect that hides an error turns a precise failure
+into a confident wrong answer**, which is worth more than the two lines it saves.
 
 ## Gradle wrapper validation
 
