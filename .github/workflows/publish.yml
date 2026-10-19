@@ -360,6 +360,10 @@ jobs:
         with:
           enabled: ${{ inputs.validate_wrapper }}
 
+      - name: Download missing Gradle toolchains
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        uses: intisy/workflows/.github/actions/gradle-toolchains@main
+
       - name: Grant execute permission for gradlew
         if: ${{ steps.detect.outputs.gradle != '' }}
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}

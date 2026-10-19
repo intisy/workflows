@@ -1,0 +1,19 @@
+// Lets a Gradle toolchain download the JDK it asks for when the runner image does not ship it.
+// A build that already applies a foojay resolver keeps its own; Gradle before 7.6 cannot load the plugin.
+initscript {
+    repositories {
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath 'org.gradle.toolchains:foojay-resolver:1.0.0'
+    }
+}
+
+settingsEvaluated { settings ->
+    def supported = org.gradle.util.GradleVersion.current() >= org.gradle.util.GradleVersion.version('7.6')
+    def alreadyResolving = ['org.gradle.toolchains.foojay-resolver-convention', 'org.gradle.toolchains.foojay-resolver']
+        .any { settings.pluginManager.hasPlugin(it) }
+    if (supported && !alreadyResolving) {
+        settings.pluginManager.apply(org.gradle.toolchains.foojay.FoojayToolchainsConventionPlugin)
+    }
+}

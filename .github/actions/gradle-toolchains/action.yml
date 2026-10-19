@@ -1,0 +1,14 @@
+name: Download missing Gradle toolchains
+description: >-
+  Installs a Gradle init script that lets a build's toolchain download the JDK it asks for, so a
+  build pinned to a JDK the runner image no longer ships (ubuntu 26.04 has no JDK 8) still runs.
+
+runs:
+  using: composite
+  steps:
+    - name: Install the toolchain init script
+      shell: bash
+      run: |
+        init_dir="${GRADLE_USER_HOME:-$HOME/.gradle}/init.d"
+        mkdir -p "$init_dir"
+        cp "${{ github.action_path }}/toolchains.init.gradle" "$init_dir/download-toolchains.gradle"
