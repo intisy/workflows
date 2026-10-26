@@ -218,19 +218,10 @@ jobs:
 
       - name: Checkout the further sibling repositories
         if: ${{ inputs.extra_repositories != '' }}
-        shell: bash
-        env:
-          SIBLINGS: ${{ inputs.extra_repositories }}
-          TOKEN: ${{ secrets.envPAT || github.token }}
-        run: |
-          while read -r repository path ref; do
-            [ -z "$repository" ] && continue
-            if [ -z "$path" ]; then
-              echo "::error::'$repository' needs a path, otherwise it would overwrite the primary checkout."
-              exit 1
-            fi
-            git clone --recurse-submodules ${ref:+--branch "$ref"}               "https://x-access-token:${TOKEN}@github.com/${repository}.git" "$path"
-          done <<< "$SIBLINGS"
+        uses: intisy/workflows/.github/actions/checkout-siblings@main
+        with:
+          repositories: ${{ inputs.extra_repositories }}
+          token: ${{ secrets.envPAT || github.token }}
 
       - name: Install apt packages
         if: ${{ inputs.apt_packages != '' && runner.os == 'Linux' }}
