@@ -1,0 +1,121 @@
+name: Library
+
+# Builds a C library with CMake on each supported platform and releases the binaries beside the
+# declaration that describes them, with a SHA256SUMS an implementation can pin and verify against.
+on:
+  workflow_call:
+    inputs:
+      source_dir:
+        description: 'The CMake project, relative to the repository root'
+        required: false
+        type: string
+        default: '.'
+      declaration:
+        description: 'Path to the library.json that declares the library, relative to the repository root'
+        required: false
+        type: string
+        default: 'library.json'
+    secrets:
+      envPAT:
+        description: 'Token used for checkout and for creating the release; falls back to the job token'
+        required: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            extension: so
+          - os: windows-latest
+            platform: win32-x64
+            extension: dll
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Read the binary name
+        id: declared
+        shell: bash
+        env:
+          DECLARATION: ${{ inputs.declaration }}
+        run: |
+          binary=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).binary)' "$DECLARATION")
+          if [ -z "$binary" ]; then
+            echo "::error::$DECLARATION declares no binary"
+            exit 1
+          fi
+          echo "binary=$binary" >> "$GITHUB_OUTPUT"
+
+      - name: Configure
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ inputs.source_dir }}
+        run: cmake -S "$SOURCE_DIR" -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --config Release
+
+      - name: Collect the shared library
+        shell: bash
+        env:
+          BINARY: ${{ steps.declared.outputs.binary }}
+          PLATFORM: ${{ matrix.platform }}
+          EXTENSION: ${{ matrix.extension }}
+        run: |
+          built=$(find build -type f \( -name "$BINARY.$EXTENSION" -o -name "lib$BINARY.$EXTENSION" \) | head -n 1)
+          if [ -z "$built" ]; then
+            echo "::error::the build did not produce $BINARY.$EXTENSION"
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$built" "dist/$BINARY-$PLATFORM.$EXTENSION"
+
+      - name: Upload the shared library
+        uses: actions/upload-artifact@v4
+        with:
+          name: library-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Download the shared libraries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: library-*
+          path: assets
+          merge-multiple: true
+
+      - name: Add the declaration
+        shell: bash
+        env:
+          DECLARATION: ${{ inputs.declaration }}
+        run: cp "$DECLARATION" assets/library.json
+
+      - name: Write SHA256SUMS
+        shell: bash
+        working-directory: assets
+        run: sha256sum $(ls | sort) > ../SHA256SUMS && mv ../SHA256SUMS SHA256SUMS
+
+      - name: Create the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" assets/* --title "$TAG" --generate-notes
