@@ -1,0 +1,140 @@
+name: Conformance
+
+# Runs a conformance kit's runner against an implementation's driver. The kit, its runner and the
+# verdict all live outside the implementation: the caller supplies only how to build its driver and
+# how to start it, so no implementation decides how its own exam is sat.
+on:
+  workflow_call:
+    inputs:
+      kit_repository:
+        description: 'The conformance kit, as owner/name; its runner is run from runner/src/cli.ts'
+        required: true
+        type: string
+      kit_ref:
+        description: 'Ref of the kit to sit; empty takes its default branch, which is where a published corpus lives'
+        required: false
+        type: string
+        default: ''
+      driver_build:
+        description: 'Command that builds the driver, run from the implementation root'
+        required: true
+        type: string
+      driver:
+        description: 'Command that starts the driver, run from the implementation root'
+        required: true
+        type: string
+      toolchains:
+        description: 'Space separated toolchains the driver needs besides node, which the runner always needs'
+        required: false
+        type: string
+        default: 'node'
+      node_version:
+        required: false
+        type: string
+        default: '24'
+      java_version:
+        required: false
+        type: string
+        default: '17'
+      jdk_distribution:
+        required: false
+        type: string
+        default: 'temurin'
+      extra_repositories:
+        description: 'Siblings the driver build reads, one "owner/name path [ref]" per line'
+        required: false
+        type: string
+        default: ''
+      timeout_minutes:
+        required: false
+        type: number
+        default: 30
+    secrets:
+      envPAT:
+        description: 'Token used for checkouts and builds; falls back to the job token'
+        required: false
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Checkout the sibling repositories
+        if: ${{ inputs.extra_repositories != '' }}
+        uses: intisy/workflows/.github/actions/checkout-siblings@main
+        with:
+          repositories: ${{ inputs.extra_repositories }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      # Outside the workspace, so nothing the implementation's build writes or reads can reach the
+      # exam it is about to sit.
+      - name: Checkout the kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.kit_repository }}
+          ref: ${{ inputs.kit_ref }}
+          path: .conformance-kit
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Move the kit out of the workspace
+        shell: bash
+        run: mv .conformance-kit "$RUNNER_TEMP/conformance-kit"
+
+      - name: Detect toolchains
+        id: detect
+        uses: intisy/workflows/.github/actions/detect-toolchains@main
+        with:
+          override: ${{ inputs.toolchains }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Setup Java
+        if: ${{ steps.detect.outputs.gradle != '' || steps.detect.outputs.maven != '' }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java_version }}
+          distribution: ${{ inputs.jdk_distribution }}
+
+      - name: Validate the gradle wrapper
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        uses: intisy/workflows/.github/actions/validate-gradle-wrapper@main
+
+      - name: Download missing Gradle toolchains
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        uses: intisy/workflows/.github/actions/gradle-toolchains@main
+
+      - name: Grant execute permission for gradlew
+        if: ${{ steps.detect.outputs.gradle != '' }}
+        shell: bash
+        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        run: chmod +x gradlew
+
+      - name: Install the kit's runner
+        shell: bash
+        working-directory: ${{ runner.temp }}/conformance-kit
+        run: npm ci
+
+      - name: Build the driver
+        shell: bash
+        run: ${{ inputs.driver_build }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || github.token }}
+
+      # The runner exits non-zero unless every vector passed, an unwitnessed one included.
+      - name: Sit the kit
+        shell: bash
+        env:
+          DRIVER: ${{ inputs.driver }}
+        run: |
+          kit="$RUNNER_TEMP/conformance-kit"
+          node "$kit/node_modules/tsx/dist/cli.mjs" "$kit/runner/src/cli.ts" run --driver "$DRIVER"

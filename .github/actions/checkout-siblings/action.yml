@@ -1,0 +1,31 @@
+name: Check out sibling repositories
+description: >-
+  Clones further repositories a build or test reads beside the primary checkout, one per line as
+  "owner/name path [ref]", into the given path inside the workspace.
+
+inputs:
+  repositories:
+    description: One "owner/name path [ref]" per line; an empty ref takes the repository's default branch
+    required: true
+  token:
+    description: Token the clones authenticate with
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Clone each sibling
+      shell: bash
+      env:
+        SIBLINGS: ${{ inputs.repositories }}
+        TOKEN: ${{ inputs.token }}
+      run: |
+        while read -r repository path ref; do
+          [ -z "$repository" ] && continue
+          if [ -z "$path" ]; then
+            echo "::error::'$repository' needs a path, otherwise it would overwrite the primary checkout."
+            exit 1
+          fi
+          git clone --recurse-submodules ${ref:+--branch "$ref"} \
+            "https://x-access-token:${TOKEN}@github.com/${repository}.git" "$path"
+        done <<< "$SIBLINGS"
