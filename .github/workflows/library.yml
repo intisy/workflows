@@ -1,7 +1,5 @@
 name: Library
 
-# Builds a C library with CMake on each supported platform and releases the binaries beside the
-# declaration that describes them, with a SHA256SUMS an implementation can pin and verify against.
 on:
   workflow_call:
     inputs:
@@ -22,6 +20,8 @@ on:
 
 jobs:
   build:
+    permissions:
+      contents: read
     strategy:
       fail-fast: true
       matrix:
@@ -118,4 +118,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.envPAT || github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" assets/* --title "$TAG" --generate-notes
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+          else
+            gh release create "$TAG" assets/* --title "$TAG" --generate-notes
+          fi
