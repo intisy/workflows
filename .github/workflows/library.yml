@@ -34,10 +34,12 @@ jobs:
             extension: dll
     runs-on: ${{ matrix.os }}
     steps:
+      # CMake runs the repository's own code here, so no token is left in .git/config for it to read.
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.envPAT || github.token }}
+          token: ${{ github.token }}
+          persist-credentials: false
 
       - name: Read the binary name
         id: declared
@@ -45,9 +47,13 @@ jobs:
         env:
           DECLARATION: ${{ inputs.declaration }}
         run: |
-          binary=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).binary)' "$DECLARATION")
+          binary=$(node -e 'const binary = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).binary; process.stdout.write(typeof binary === "string" ? binary : "")' "$DECLARATION")
           if [ -z "$binary" ]; then
             echo "::error::$DECLARATION declares no binary"
+            exit 1
+          fi
+          if ! [[ "$binary" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "::error::$DECLARATION declares a binary that is not a C identifier, which library.schema.json requires"
             exit 1
           fi
           echo "binary=$binary" >> "$GITHUB_OUTPUT"
