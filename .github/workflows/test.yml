@@ -63,6 +63,11 @@ on:
         required: false
         type: boolean
         default: true
+      gradle_root:
+        description: 'Directory the gradle build is rooted at; empty detects it at the repository root or java/'
+        required: false
+        type: string
+        default: ''
       gradle_pretest:
         description: 'Gradle task run before the tests, for fixtures the tests need installed'
         required: false
@@ -129,8 +134,8 @@ on:
       extra_repositories:
         description: >-
           Further sibling checkouts, one per line as `owner/name path` with an optional third
-          field naming the ref. For a repository whose tests read more than one sibling;
-          extra_repository stays the form for one.
+          field naming the ref, a branch, a tag or a full commit SHA. For a repository whose tests
+          read more than one sibling; extra_repository stays the form for one.
         required: false
         type: string
         default: ''
@@ -340,7 +345,7 @@ jobs:
       - name: Grant execute permission for gradlew
         if: ${{ steps.detect.outputs.gradle != '' && runner.os != 'Windows' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        working-directory: ${{ inputs.gradle_root || steps.detect.outputs.gradle_root || '.' }}
         run: chmod +x gradlew
 
       - name: Install node dependencies
@@ -369,7 +374,7 @@ jobs:
       - name: Run the gradle pretest task
         if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_pretest != '' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        working-directory: ${{ inputs.gradle_root || steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.gradle_pretest }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -379,7 +384,7 @@ jobs:
       - name: Test with gradle
         if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_test != '' }}
         shell: bash
-        working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
+        working-directory: ${{ inputs.gradle_root || steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
