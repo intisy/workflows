@@ -5,7 +5,7 @@ description: >-
 
 inputs:
   repositories:
-    description: One "owner/name path [ref]" per line; an empty ref takes the repository's default branch
+    description: One "owner/name path [ref]" per line, the ref a branch, a tag or a full commit SHA; an empty ref takes the repository's default branch
     required: true
   token:
     description: Token the clones authenticate with
@@ -26,6 +26,13 @@ runs:
             echo "::error::'$repository' needs a path, otherwise it would overwrite the primary checkout."
             exit 1
           fi
-          git clone --recurse-submodules ${ref:+--branch "$ref"} \
-            "https://x-access-token:${TOKEN}@github.com/${repository}.git" "$path"
+          url="https://x-access-token:${TOKEN}@github.com/${repository}.git"
+          # clone --branch takes a branch or a tag and never a commit, so a pinned SHA is checked out after a full clone.
+          if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+            git clone "$url" "$path"
+            git -C "$path" checkout --quiet "$ref"
+            git -C "$path" submodule update --init --recursive
+          else
+            git clone --recurse-submodules ${ref:+--branch "$ref"} "$url" "$path"
+          fi
         done <<< "$SIBLINGS"
