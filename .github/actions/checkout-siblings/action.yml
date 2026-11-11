@@ -20,8 +20,7 @@ runs:
         SIBLINGS: ${{ inputs.repositories }}
         TOKEN: ${{ inputs.token }}
       run: |
-        authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '
-')
+        authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
         echo "::add-mask::$authorization"
         export GIT_CONFIG_COUNT=1
         export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
