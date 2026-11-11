@@ -64,6 +64,13 @@ jobs:
         with:
           token: ${{ secrets.envPAT || github.token }}
 
+      - name: Check out the dependencies the repo file names
+        if: ${{ hashFiles('.weivel/repo.json') != '' }}
+        uses: intisy/workflows/.github/actions/checkout-dependencies@main
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+          extra_repositories: ${{ inputs.extra_repositories }}
+
       - name: Checkout the sibling repositories
         if: ${{ inputs.extra_repositories != '' }}
         uses: intisy/workflows/.github/actions/checkout-siblings@main
