@@ -7,9 +7,13 @@ on:
   push:
     paths:
       - '.github/actions/**'
+      - '.github/self-test/**'
+      - '.github/workflows/self-test.yml'
   pull_request:
     paths:
       - '.github/actions/**'
+      - '.github/self-test/**'
+      - '.github/workflows/self-test.yml'
 
 jobs:
   actions:
@@ -17,3 +21,51 @@ jobs:
     with:
       toolchains: node
       node_build: ''
+
+  dependencies-valid:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the fixture's dependencies
+        uses: ./.github/actions/checkout-dependencies
+        with:
+          token: ${{ github.token }}
+          file: .github/self-test/valid/repo.json
+      - name: Expect the dependency at its pinned commit
+        shell: bash
+        run: |
+          test "$(git -C siblings/workflows rev-parse HEAD)" = 7698e1dec71ce0e070c9c3d20334ef9ef3f6de6f
+          test -f siblings/workflows/.github/actions/checkout-siblings/action.yml
+
+  dependencies-refused:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { case: path-escape, refusal: path-escape }
+          - { case: path-name-mismatch, refusal: path-name-mismatch }
+          - { case: missing-id, refusal: id-not-found }
+          - { case: claimed-twice, refusal: path-claimed-twice, extra_repositories: 'intisy/workflows siblings/workflows' }
+          - { case: schema-failure, refusal: schema }
+          - { case: foreign-resolver, refusal: foreign-resolver }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the fixture's dependencies
+        id: checkout
+        continue-on-error: true
+        uses: ./.github/actions/checkout-dependencies
+        with:
+          token: ${{ github.token }}
+          file: .github/self-test/${{ matrix.case }}/repo.json
+          extra_repositories: ${{ matrix.extra_repositories }}
+      - name: Expect this refusal and nothing else
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.checkout.outcome }}
+          EXPECTED: ${{ matrix.refusal }}
+        run: |
+          [ "$OUTCOME" = failure ] || { echo "::error::expected the checkout to be refused, it ended $OUTCOME"; exit 1; }
+          actual=$(cat "$RUNNER_TEMP/checkout-dependencies.refusal" 2>/dev/null || echo none)
+          [ "$actual" = "$EXPECTED" ] || { echo "::error::expected refusal '$EXPECTED', got '$actual'"; exit 1; }
+          [ ! -e siblings ] || { echo "::error::a refused checkout left siblings/ behind"; exit 1; }
