@@ -68,6 +68,13 @@ runs:
           fi
         done <<< "$dependency_rows"
 
+        authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '
+')
+        echo "::add-mask::$authorization"
+        export GIT_CONFIG_COUNT=1
+        export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+        export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $authorization"
+
         schema_file="${RUNNER_TEMP}/repo.schema.json"
         curl -sSfL "$SCHEMA" -o "$schema_file" || refuse schema-unreachable "could not fetch the schema from $SCHEMA. Fix: retry, or pass another address as 'schema'."
         schema_report=$(npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$schema_file" -d "$REPO_FILE" 2>&1) \
@@ -102,7 +109,7 @@ runs:
           IFS=$'\t' read -r found_number full_name <<< "$lookup"
           [ "$found_number" = "$repository_number" ] || refuse id-mismatch "looking up $repository_number returned $found_number. Fix: correct the id."
           [ ! -e "$path" ] || refuse path-exists "the path '$path' already exists. Fix: remove what is there, or choose another path."
-          git clone "https://x-access-token:${TOKEN}@github.com/${full_name}.git" "$path" || refuse clone-failed "cloning $full_name into $path failed."
+          git clone "https://github.com/${full_name}.git" "$path" || refuse clone-failed "cloning $full_name into $path failed."
           git -C "$path" checkout --quiet "$commit" || refuse commit-not-found "$full_name has no commit $commit (dependency '$import_name'). Fix: pin a commit that exists."
           git -C "$path" submodule update --init --recursive
           echo "Checked out $full_name at $commit into $path"
