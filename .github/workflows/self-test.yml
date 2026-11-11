@@ -23,7 +23,11 @@ jobs:
       node_build: ''
 
   dependencies-valid:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Check out the fixture's dependencies
@@ -36,6 +40,37 @@ jobs:
         run: |
           test "$(git -C siblings/workflows rev-parse HEAD)" = 7698e1dec71ce0e070c9c3d20334ef9ef3f6de6f
           test -f siblings/workflows/.github/actions/checkout-siblings/action.yml
+      - name: Expect no token left under the sibling's .git
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          if grep -rqF -e "$TOKEN" -e x-access-token siblings/workflows/.git; then
+            echo "::error::the token was persisted under siblings/workflows/.git"
+            exit 1
+          fi
+          echo "no token under siblings/workflows/.git"
+
+  siblings-no-token:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out a sibling with checkout-siblings
+        uses: ./.github/actions/checkout-siblings
+        with:
+          repositories: intisy/workflows siblings/workflows 7698e1dec71ce0e070c9c3d20334ef9ef3f6de6f
+          token: ${{ github.token }}
+      - name: Expect the sibling and no token under its .git
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          test "$(git -C siblings/workflows rev-parse HEAD)" = 7698e1dec71ce0e070c9c3d20334ef9ef3f6de6f
+          if grep -rqF -e "$TOKEN" -e x-access-token siblings/workflows/.git; then
+            echo "::error::the token was persisted under siblings/workflows/.git"
+            exit 1
+          fi
+          echo "no token under siblings/workflows/.git"
 
   dependencies-refused:
     runs-on: ubuntu-latest

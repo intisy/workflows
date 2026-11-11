@@ -20,13 +20,19 @@ runs:
         SIBLINGS: ${{ inputs.repositories }}
         TOKEN: ${{ inputs.token }}
       run: |
+        authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '
+')
+        echo "::add-mask::$authorization"
+        export GIT_CONFIG_COUNT=1
+        export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+        export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $authorization"
         while read -r repository path ref; do
           [ -z "$repository" ] && continue
           if [ -z "$path" ]; then
             echo "::error::'$repository' needs a path, otherwise it would overwrite the primary checkout."
             exit 1
           fi
-          url="https://x-access-token:${TOKEN}@github.com/${repository}.git"
+          url="https://github.com/${repository}.git"
           # clone --branch takes a branch or a tag and never a commit, so a pinned SHA is checked out after a full clone.
           if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
             git clone "$url" "$path"
