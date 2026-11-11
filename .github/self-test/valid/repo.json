@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "importName": "fixture",
+  "dependencies": [
+    { "id": "github:845030083", "importName": "workflows", "commit": "7698e1dec71ce0e070c9c3d20334ef9ef3f6de6f" }
+  ]
+}
