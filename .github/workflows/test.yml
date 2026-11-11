@@ -211,38 +211,6 @@ jobs:
         with:
           exempt: ${{ inputs.line_endings_exempt }}
 
-      - name: Check out the dependencies the repo file names
-        if: ${{ hashFiles('.weivel/repo.json') != '' }}
-        uses: intisy/workflows/.github/actions/checkout-dependencies@main
-        with:
-          token: ${{ secrets.envPAT || github.token }}
-          extra_repositories: ${{ inputs.extra_repositories }}
-          extra_path: ${{ inputs.extra_path }}
-
-      - name: Checkout the sibling repository
-        if: ${{ inputs.extra_repository != '' }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.extra_repository }}
-          ref: ${{ inputs.extra_ref }}
-          path: ${{ inputs.extra_path }}
-          submodules: recursive
-          token: ${{ secrets.envPAT || github.token }}
-
-      - name: Checkout the further sibling repositories
-        if: ${{ inputs.extra_repositories != '' }}
-        uses: intisy/workflows/.github/actions/checkout-siblings@main
-        with:
-          repositories: ${{ inputs.extra_repositories }}
-          token: ${{ secrets.envPAT || github.token }}
-
-      - name: Install apt packages
-        if: ${{ inputs.apt_packages != '' && runner.os == 'Linux' }}
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ inputs.apt_packages }}
-
       - name: Exchange an OIDC token for the build credential
         if: ${{ inputs.token_broker != '' }}
         shell: bash
@@ -285,6 +253,38 @@ jobs:
           # Masked before it reaches the environment, so no later step can print it.
           echo "::add-mask::$token"
           echo "BROKER_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Check out the dependencies the repo file names
+        if: ${{ hashFiles('.weivel/repo.json') != '' }}
+        uses: intisy/workflows/.github/actions/checkout-dependencies@main
+        with:
+          token: ${{ env.BROKER_TOKEN || secrets.envPAT || github.token }}
+          extra_repositories: ${{ inputs.extra_repositories }}
+          extra_path: ${{ inputs.extra_path }}
+
+      - name: Checkout the sibling repository
+        if: ${{ inputs.extra_repository != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.extra_repository }}
+          ref: ${{ inputs.extra_ref }}
+          path: ${{ inputs.extra_path }}
+          submodules: recursive
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Checkout the further sibling repositories
+        if: ${{ inputs.extra_repositories != '' }}
+        uses: intisy/workflows/.github/actions/checkout-siblings@main
+        with:
+          repositories: ${{ inputs.extra_repositories }}
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Install apt packages
+        if: ${{ inputs.apt_packages != '' && runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ inputs.apt_packages }}
 
       - name: Detect toolchains
         id: detect
