@@ -54,7 +54,7 @@ runs:
           | select(type == "object")
           | [(.id // "" | tostring), (.importName // "" | tostring), (.commit // "" | tostring),
              (.path // ("siblings/" + (.importName // "" | tostring)))]
-          | join("|")' "$REPO_FILE" | tr -d '')
+          | join("|")' "$REPO_FILE" | tr -d '\r')
 
         while IFS='|' read -r id import_name commit path; do
           [ -z "$id$import_name$path" ] && continue
