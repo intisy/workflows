@@ -1,0 +1,109 @@
+name: Check out a repository's dependencies
+description: >-
+  Validates the repository's .weivel/repo.json against the published schema, then clones each of
+  its dependencies, resolved by id, at its pinned commit into its path beside the primary checkout.
+
+inputs:
+  token:
+    description: Token the id lookups and the clones authenticate with
+    required: true
+  file:
+    description: The repo file to read
+    required: false
+    default: .weivel/repo.json
+  extra_repositories:
+    description: The "owner/name path [ref]" lines the workflow also checks out, so a path claimed by both is refused
+    required: false
+    default: ''
+  extra_path:
+    description: The path of the single extra repository the workflow also checks out
+    required: false
+    default: ''
+  schema:
+    description: Address of the repo file schema
+    required: false
+    default: https://weivel.github.io/model/repo.schema.json
+
+runs:
+  using: composite
+  steps:
+    - name: Validate and check out
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        REPO_FILE: ${{ inputs.file }}
+        EXTRA_REPOSITORIES: ${{ inputs.extra_repositories }}
+        EXTRA_PATH: ${{ inputs.extra_path }}
+        SCHEMA: ${{ inputs.schema }}
+      run: |
+        set -uo pipefail
+        refusal_file="${RUNNER_TEMP}/checkout-dependencies.refusal"
+        rm -f "$refusal_file"
+
+        refuse() {
+          echo "$1" > "$refusal_file"
+          echo "::error::$2"
+          exit 1
+        }
+
+        [ -f "$REPO_FILE" ] || refuse missing-file "$REPO_FILE does not exist. Fix: add it, or do not run this action for a repository without one."
+        jq -e . "$REPO_FILE" > /dev/null || refuse not-json "$REPO_FILE is not valid JSON. Fix: correct the syntax error."
+
+        dependency_rows=$(jq -r '
+          ((.dependencies // []) | if type == "array" then .[] else empty end)
+          | select(type == "object")
+          | [(.id // "" | tostring), (.importName // "" | tostring), (.commit // "" | tostring),
+             (.path // ("siblings/" + (.importName // "" | tostring)))]
+          | join("|")' "$REPO_FILE")
+
+        while IFS='|' read -r id import_name commit path; do
+          [ -z "$id$import_name$path" ] && continue
+          case "$path" in
+            *..*) refuse path-escape "dependency '$import_name' has path '$path', which contains '..'. Fix: use a path beneath siblings/ with no '..'." ;;
+            siblings/*) ;;
+            *) refuse path-outside-siblings "dependency '$import_name' has path '$path', which is not beneath siblings/. Fix: use siblings/$import_name." ;;
+          esac
+          if [ "${path##*/}" != "$import_name" ]; then
+            refuse path-name-mismatch "dependency '$import_name' has path '$path', whose last segment is not '$import_name'. Fix: use siblings/$import_name."
+          fi
+        done <<< "$dependency_rows"
+
+        schema_file="${RUNNER_TEMP}/repo.schema.json"
+        curl -sSfL "$SCHEMA" -o "$schema_file" || refuse schema-unreachable "could not fetch the schema from $SCHEMA. Fix: retry, or pass another address as 'schema'."
+        schema_report=$(npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$schema_file" -d "$REPO_FILE" 2>&1) \
+          || { echo "$schema_report"; refuse schema "$REPO_FILE does not match $SCHEMA. Fix: correct what the report above names."; }
+
+        claimed=""
+        claim() {
+          if grep -qxF -- "$1" <<< "$claimed"; then
+            refuse path-claimed-twice "the path '$1' is claimed twice. Fix: give each checkout its own path."
+          fi
+          claimed="${claimed}${1}"$'\n'
+        }
+        [ -n "$EXTRA_PATH" ] && claim "$EXTRA_PATH"
+        while read -r _ extra_repository_path _; do
+          [ -n "$extra_repository_path" ] && claim "$extra_repository_path"
+        done <<< "$EXTRA_REPOSITORIES"
+        while IFS='|' read -r id import_name commit path; do
+          [ -z "$id" ] && continue
+          claim "$path"
+        done <<< "$dependency_rows"
+
+        while IFS='|' read -r id import_name commit path; do
+          [ -z "$id" ] && continue
+          case "$id" in
+            github:*) ;;
+            *) refuse foreign-resolver "dependency '$import_name' has id '$id'. Fix: CI resolves GitHub ids only, so use a github: id, or check this repository out outside this workflow." ;;
+          esac
+          repository_number="${id#github:}"
+          repository_number="${repository_number%%/*}"
+          lookup=$(GH_TOKEN="$TOKEN" gh api "repositories/${repository_number}" --jq '[.id, .full_name] | @tsv' 2>&1) \
+            || { echo "$lookup"; refuse id-not-found "no GitHub repository has the id $repository_number (dependency '$import_name'). Fix: correct the id, which is the number GitHub returns as 'id'."; }
+          IFS=$'\t' read -r found_number full_name <<< "$lookup"
+          [ "$found_number" = "$repository_number" ] || refuse id-mismatch "looking up $repository_number returned $found_number. Fix: correct the id."
+          [ ! -e "$path" ] || refuse path-exists "the path '$path' already exists. Fix: remove what is there, or choose another path."
+          git clone "https://x-access-token:${TOKEN}@github.com/${full_name}.git" "$path" || refuse clone-failed "cloning $full_name into $path failed."
+          git -C "$path" checkout --quiet "$commit" || refuse commit-not-found "$full_name has no commit $commit (dependency '$import_name'). Fix: pin a commit that exists."
+          git -C "$path" submodule update --init --recursive
+          echo "Checked out $full_name at $commit into $path"
+        done <<< "$dependency_rows"

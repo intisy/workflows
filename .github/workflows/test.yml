@@ -211,6 +211,14 @@ jobs:
         with:
           exempt: ${{ inputs.line_endings_exempt }}
 
+      - name: Check out the dependencies the repo file names
+        if: ${{ hashFiles('.weivel/repo.json') != '' }}
+        uses: intisy/workflows/.github/actions/checkout-dependencies@main
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+          extra_repositories: ${{ inputs.extra_repositories }}
+          extra_path: ${{ inputs.extra_path }}
+
       - name: Checkout the sibling repository
         if: ${{ inputs.extra_repository != '' }}
         uses: actions/checkout@v4
