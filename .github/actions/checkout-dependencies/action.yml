@@ -68,16 +68,16 @@ runs:
           fi
         done <<< "$dependency_rows"
 
+        schema_file="${RUNNER_TEMP}/repo.schema.json"
+        curl -sSfL "$SCHEMA" -o "$schema_file" || refuse schema-unreachable "could not fetch the schema from $SCHEMA. Fix: retry, or pass another address as 'schema'."
+        schema_report=$(env -u TOKEN npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$schema_file" -d "$REPO_FILE" 2>&1) \
+          || { echo "$schema_report"; refuse schema "$REPO_FILE does not match $SCHEMA. Fix: correct what the report above names."; }
+
         authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
         echo "::add-mask::$authorization"
         export GIT_CONFIG_COUNT=1
         export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
         export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $authorization"
-
-        schema_file="${RUNNER_TEMP}/repo.schema.json"
-        curl -sSfL "$SCHEMA" -o "$schema_file" || refuse schema-unreachable "could not fetch the schema from $SCHEMA. Fix: retry, or pass another address as 'schema'."
-        schema_report=$(npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$schema_file" -d "$REPO_FILE" 2>&1) \
-          || { echo "$schema_report"; refuse schema "$REPO_FILE does not match $SCHEMA. Fix: correct what the report above names."; }
 
         claimed=""
         claim() {
