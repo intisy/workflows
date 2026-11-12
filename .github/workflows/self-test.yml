@@ -104,3 +104,22 @@ jobs:
           actual=$(cat "$RUNNER_TEMP/checkout-dependencies.refusal" 2>/dev/null || echo none)
           [ "$actual" = "$EXPECTED" ] || { echo "::error::expected refusal '$EXPECTED', got '$actual'"; exit 1; }
           [ ! -e siblings ] || { echo "::error::a refused checkout left siblings/ behind"; exit 1; }
+
+  setup-cmake:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the pinned cmake
+        uses: ./.github/actions/setup-cmake
+        with:
+          version: 3.31.6
+      - name: Expect it first on the PATH
+        shell: bash
+        run: |
+          reported=$(cmake --version | head -n 1)
+          [ "$reported" = "cmake version 3.31.6" ] || { echo "::error::cmake on the PATH reports '$reported'"; exit 1; }
+          ctest --version | head -n 1

@@ -1,0 +1,177 @@
+name: Drift
+
+# Runs a conformance kit's drift checks against the repository that calls it. The kit, its programs
+# and their word, language and rule lists all live outside the repository under test, so no
+# repository decides how its own checks are run.
+on:
+  workflow_call:
+    inputs:
+      kit_repository:
+        description: 'The conformance kit, as owner/name'
+        required: true
+        type: string
+      kit_ref:
+        description: 'Ref of the kit to run; empty takes its default branch'
+        required: false
+        type: string
+        default: ''
+      role:
+        description: 'What the repository under test is, as the purity check reads it: c, core, kit, standard, or a language the kit lists'
+        required: true
+        type: string
+      checks:
+        description: 'Space separated subset of: purity names parity core-gate core-sources benchmark'
+        required: true
+        type: string
+      language:
+        description: 'The language whose module layout the parity check reads; required for parity'
+        required: false
+        type: string
+        default: ''
+      runners:
+        description: 'JSON array of the runner labels the job fans out over'
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+      cmake_version:
+        description: 'CMake release the kit is built with'
+        required: false
+        type: string
+        default: '3.31.6'
+      timeout_minutes:
+        required: false
+        type: number
+        default: 30
+    secrets:
+      envPAT:
+        description: 'Token used for checkouts; falls back to the job token'
+        required: false
+
+jobs:
+  drift:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.runners) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    steps:
+      - name: Refuse a check list that cannot be run
+        shell: bash
+        env:
+          CHECKS: ${{ inputs.checks }}
+          ROLE: ${{ inputs.role }}
+          LANGUAGE: ${{ inputs.language }}
+        run: |
+          set -euo pipefail
+          count=0
+          for check in $CHECKS; do
+            count=$((count + 1))
+            case "$check" in
+              purity|names) ;;
+              parity)
+                [ -n "$LANGUAGE" ] || { echo "::error::parity needs the language input."; exit 1; } ;;
+              core-gate|core-sources|benchmark)
+                [ "$ROLE" = "core" ] || { echo "::error::$check reads the core under test, and this repository's role is '$ROLE', not core."; exit 1; } ;;
+              *)
+                echo "::error::'$check' is not a drift check. Fix: use purity, names, parity, core-gate, core-sources or benchmark."
+                exit 1 ;;
+            esac
+          done
+          [ "$count" -gt 0 ] || { echo "::error::the checks input names no check, so this run would check nothing."; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Checkout the kit
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.kit_repository }}
+          ref: ${{ inputs.kit_ref }}
+          path: .drift-kit
+          token: ${{ secrets.envPAT || github.token }}
+
+      - name: Move the kit out of the workspace
+        shell: bash
+        run: |
+          mv .drift-kit "$RUNNER_TEMP/drift-kit"
+          echo "DRIFT_KIT=$RUNNER_TEMP/drift-kit" >> "$GITHUB_ENV"
+
+      - name: Check out the core the kit pins
+        if: ${{ inputs.role != 'core' }}
+        uses: intisy/workflows/.github/actions/checkout-dependencies@main
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+          file: ${{ runner.temp }}/drift-kit/.weivel/repo.json
+
+      - name: Give the kit the core it builds against
+        shell: bash
+        env:
+          ROLE: ${{ inputs.role }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$DRIFT_KIT/siblings"
+          if [ "$ROLE" = "core" ]; then
+            # The core gate and the benchmark must read the core under test, not the one the kit pins.
+            cp -R "$GITHUB_WORKSPACE" "$DRIFT_KIT/siblings/core"
+          else
+            mv siblings/core "$DRIFT_KIT/siblings/core"
+            rmdir siblings
+          fi
+          git -C "$DRIFT_KIT/siblings/core" log -1 --format='The kit builds against core %H'
+
+      - name: Set up the pinned cmake
+        uses: intisy/workflows/.github/actions/setup-cmake@main
+        with:
+          version: ${{ inputs.cmake_version }}
+
+      - name: Build the kit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$DRIFT_KIT" -B "$DRIFT_KIT/build" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$DRIFT_KIT/build" --config Release --parallel
+          programs="$DRIFT_KIT/build/bin"
+          if [ -d "$programs/Release" ]; then
+            programs="$programs/Release"
+          fi
+          echo "DRIFT_PROGRAMS=$programs" >> "$GITHUB_ENV"
+
+      - name: Purity
+        if: ${{ contains(format(' {0} ', inputs.checks), ' purity ') }}
+        shell: bash
+        env:
+          ROLE: ${{ inputs.role }}
+        run: '"$DRIFT_PROGRAMS/weivel-purity" "$GITHUB_WORKSPACE" "$ROLE" "$DRIFT_KIT/checks/languages.txt"'
+
+      - name: Names
+        if: ${{ contains(format(' {0} ', inputs.checks), ' names ') }}
+        shell: bash
+        run: '"$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$DRIFT_KIT/checks/names.txt"'
+
+      - name: Parity
+        if: ${{ contains(format(' {0} ', inputs.checks), ' parity ') }}
+        shell: bash
+        env:
+          LANGUAGE: ${{ inputs.language }}
+        run: '"$DRIFT_PROGRAMS/weivel-parity" "$GITHUB_WORKSPACE" "$DRIFT_KIT/siblings/core/MODULES" "$LANGUAGE" "$DRIFT_KIT/checks/languages.txt"'
+
+      - name: Core gate
+        if: ${{ contains(format(' {0} ', inputs.checks), ' core-gate ') }}
+        shell: bash
+        run: ctest --test-dir "$DRIFT_KIT/build" -C Release -R '^core_reads_nothing_of_the_world$' --no-tests=error -V
+
+      - name: Core sources
+        if: ${{ contains(format(' {0} ', inputs.checks), ' core-sources ') }}
+        shell: bash
+        run: '"$DRIFT_PROGRAMS/weivel-core-gate" --sources "$DRIFT_KIT/checks/core_gate.txt" "$GITHUB_WORKSPACE"'
+
+      - name: Benchmark
+        if: ${{ contains(format(' {0} ', inputs.checks), ' benchmark ') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$DRIFT_PROGRAMS/weivel-benchmark-control-call" measure
+          "$DRIFT_PROGRAMS/weivel-benchmark-control-call" gate "$DRIFT_KIT/benchmarks/budget.txt"

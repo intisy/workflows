@@ -96,6 +96,11 @@ on:
         required: false
         type: string
         default: '-m unittest discover -s . -t . -v'
+      cmake_version:
+        description: 'CMake release to install and put first on the PATH; empty uses whatever the runner image ships'
+        required: false
+        type: string
+        default: ''
       cmake_configure:
         required: false
         type: string
@@ -412,6 +417,12 @@ jobs:
         if: ${{ steps.detect.outputs.python != '' }}
         shell: bash
         run: python3 ${{ inputs.python_test }}
+
+      - name: Set up the pinned cmake
+        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_version != '' }}
+        uses: intisy/workflows/.github/actions/setup-cmake@main
+        with:
+          version: ${{ inputs.cmake_version }}
 
       - name: Configure with cmake
         if: ${{ steps.detect.outputs.cmake != '' }}
