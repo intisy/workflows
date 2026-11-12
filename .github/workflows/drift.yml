@@ -57,6 +57,7 @@ jobs:
     timeout-minutes: ${{ inputs.timeout_minutes }}
     steps:
       - name: Refuse a check list that cannot be run
+        id: checks
         shell: bash
         env:
           CHECKS: ${{ inputs.checks }}
@@ -79,6 +80,7 @@ jobs:
             esac
           done
           [ "$count" -gt 0 ] || { echo "::error::the checks input names no check, so this run would check nothing."; exit 1; }
+          echo "padded= $(printf '%s' "$CHECKS" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//') " >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -141,14 +143,14 @@ jobs:
           echo "DRIFT_PROGRAMS=$programs" >> "$GITHUB_ENV"
 
       - name: Purity
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' purity ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' purity ') }}
         shell: bash
         env:
           ROLE: ${{ inputs.role }}
         run: '"$DRIFT_PROGRAMS/weivel-purity" "$GITHUB_WORKSPACE" "$ROLE" "$DRIFT_KIT/checks/languages.txt"'
 
       - name: Names
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' names ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' names ') }}
         shell: bash
         env:
           ROLE: ${{ inputs.role }}
@@ -161,24 +163,24 @@ jobs:
           "$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$words"
 
       - name: Parity
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' parity ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' parity ') }}
         shell: bash
         env:
           LANGUAGE: ${{ inputs.language }}
         run: '"$DRIFT_PROGRAMS/weivel-parity" "$GITHUB_WORKSPACE" "$DRIFT_KIT/siblings/core/MODULES" "$LANGUAGE" "$DRIFT_KIT/checks/languages.txt"'
 
       - name: Core gate
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' core-gate ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' core-gate ') }}
         shell: bash
         run: ctest --test-dir "$DRIFT_KIT/build" -C Release -R '^core_reads_nothing_of_the_world$' --no-tests=error -V
 
       - name: Core sources
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' core-sources ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' core-sources ') }}
         shell: bash
         run: '"$DRIFT_PROGRAMS/weivel-core-gate" --sources "$DRIFT_KIT/checks/core_gate.txt" "$GITHUB_WORKSPACE"'
 
       - name: Benchmark
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(format(' {0} ', inputs.checks), ' benchmark ') }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' benchmark ') }}
         shell: bash
         run: |
           set -euo pipefail
