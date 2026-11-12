@@ -149,7 +149,15 @@ jobs:
       - name: Names
         if: ${{ contains(format(' {0} ', inputs.checks), ' names ') }}
         shell: bash
-        run: '"$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$DRIFT_KIT/checks/names.txt"'
+        env:
+          ROLE: ${{ inputs.role }}
+        run: |
+          words="$DRIFT_KIT/checks/names.txt"
+          # The kit carries the list it checks with, and the names check skips only the list it was given.
+          if [ "$ROLE" = "kit" ]; then
+            words="$GITHUB_WORKSPACE/checks/names.txt"
+          fi
+          "$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$words"
 
       - name: Parity
         if: ${{ contains(format(' {0} ', inputs.checks), ' parity ') }}
