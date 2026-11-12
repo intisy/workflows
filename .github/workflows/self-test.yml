@@ -116,10 +116,10 @@ jobs:
       - name: Install the pinned cmake
         uses: ./.github/actions/setup-cmake
         with:
-          version: 3.31.6
+          version: 4.4.4
       - name: Expect it first on the PATH
         shell: bash
         run: |
           reported=$(cmake --version | head -n 1)
-          [ "$reported" = "cmake version 3.31.6" ] || { echo "::error::cmake on the PATH reports '$reported'"; exit 1; }
+          [ "$reported" = "cmake version 4.4.4" ] || { echo "::error::cmake on the PATH reports '$reported'"; exit 1; }
           ctest --version | head -n 1
