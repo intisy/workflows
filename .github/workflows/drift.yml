@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       checks:
-        description: 'Space separated subset of: purity names parity core-gate core-sources benchmark'
+        description: 'Space separated subset of: purity names parity core-gate core-sources benchmark vectors'
         required: true
         type: string
       language:
@@ -72,10 +72,10 @@ jobs:
               purity|names) ;;
               parity)
                 [ -n "$LANGUAGE" ] || { echo "::error::parity needs the language input."; exit 1; } ;;
-              core-gate|core-sources|benchmark)
+              core-gate|core-sources|benchmark|vectors)
                 [ "$ROLE" = "core" ] || { echo "::error::$check reads the core under test, and this repository's role is '$ROLE', not core."; exit 1; } ;;
               *)
-                echo "::error::'$check' is not a drift check. Fix: use purity, names, parity, core-gate, core-sources or benchmark."
+                echo "::error::'$check' is not a drift check. Fix: use purity, names, parity, core-gate, core-sources, benchmark or vectors."
                 exit 1 ;;
             esac
           done
@@ -186,3 +186,8 @@ jobs:
           set -euo pipefail
           "$DRIFT_PROGRAMS/weivel-benchmark-control-call" measure
           "$DRIFT_PROGRAMS/weivel-benchmark-control-call" gate "$DRIFT_KIT/benchmarks/budget.txt"
+
+      - name: Vectors
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' vectors ') }}
+        shell: bash
+        run: '"$DRIFT_PROGRAMS/weivel-conformance" run "$DRIFT_KIT/vectors/core"'

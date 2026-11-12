@@ -142,16 +142,17 @@ jobs:
     with:
       kit_repository: owner/conformance
       role: core
-      checks: purity names core-gate core-sources benchmark
+      checks: purity names core-gate core-sources benchmark vectors
       runners: '["ubuntu-latest","windows-latest","macos-latest"]'
     secrets:
       envPAT: ${{ secrets.PAT }}
 ```
 
 `purity` and `names` read the workspace, `parity` reads it against the `MODULES` list of the core the
-kit pins and needs `language`. `core-gate`, `core-sources` and `benchmark` read the core itself, so
-they are refused unless `role` is `core`, and for that role the kit is built against the checkout
-under test rather than its pinned core. The kit is built in Release, since a timing verdict from an
+kit pins and needs `language`. `core-gate`, `core-sources`, `benchmark` and `vectors` (the kit's
+`vectors/core` corpus, sat by the core under test) read the core itself, so they are refused unless
+`role` is `core`, and for that role the kit is built against the checkout under test rather than its
+pinned core. The kit is built in Release, since a timing verdict from an
 unoptimised build means nothing.
 
 The CMake is pinned (`cmake_version`) because the kit's platform-specific tests skip by exit code,
