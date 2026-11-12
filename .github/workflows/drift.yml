@@ -37,7 +37,7 @@ on:
         description: 'CMake release the kit is built with'
         required: false
         type: string
-        default: '3.31.6'
+        default: '4.4.4'
       timeout_minutes:
         required: false
         type: number
