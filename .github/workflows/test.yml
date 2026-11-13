@@ -102,10 +102,12 @@ on:
         type: string
         default: ''
       cmake_configure:
+        description: 'Empty skips the configure step, for a repository whose own build drives cmake'
         required: false
         type: string
         default: '-B build'
       cmake_build:
+        description: 'Empty skips the cmake build step'
         required: false
         type: string
         default: '--build build'
@@ -342,6 +344,13 @@ jobs:
         with:
           python-version: ${{ inputs.python_version }}
 
+      # With the other toolchains, because a node or gradle build may drive cmake itself.
+      - name: Set up the pinned cmake
+        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_version != '' }}
+        uses: intisy/workflows/.github/actions/setup-cmake@main
+        with:
+          version: ${{ inputs.cmake_version }}
+
       # Before the wrapper is made executable or invoked, since validating one after running it
       # proves nothing. Quiet when the repository has no wrapper jar at all.
       - name: Validate the gradle wrapper
@@ -418,19 +427,13 @@ jobs:
         shell: bash
         run: python3 ${{ inputs.python_test }}
 
-      - name: Set up the pinned cmake
-        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_version != '' }}
-        uses: intisy/workflows/.github/actions/setup-cmake@main
-        with:
-          version: ${{ inputs.cmake_version }}
-
       - name: Configure with cmake
-        if: ${{ steps.detect.outputs.cmake != '' }}
+        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_configure != '' }}
         shell: bash
         run: cmake ${{ inputs.cmake_configure }}
 
       - name: Build with cmake
-        if: ${{ steps.detect.outputs.cmake != '' }}
+        if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_build != '' }}
         shell: bash
         run: cmake ${{ inputs.cmake_build }}
 
