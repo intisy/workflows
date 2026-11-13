@@ -172,15 +172,7 @@ jobs:
       - name: Names
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' names ') }}
         shell: bash
-        env:
-          ROLE: ${{ inputs.role }}
-        run: |
-          words="$DRIFT_KIT/checks/names.txt"
-          # The kit carries the list it checks with, and the names check skips only the list it was given.
-          if [ "$ROLE" = "kit" ]; then
-            words="$GITHUB_WORKSPACE/checks/names.txt"
-          fi
-          "$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$words"
+        run: '"$DRIFT_PROGRAMS/weivel-names" "$GITHUB_WORKSPACE" "$DRIFT_KIT/checks/names.txt"'
 
       - name: Parity
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' parity ') }}
