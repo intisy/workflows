@@ -159,6 +159,9 @@ The CMake is pinned (`cmake_version`) because the kit's platform-specific tests 
 which needs CMake 3.29 or later; below that they fail instead. `test.yml` takes the same
 `cmake_version` input, empty by default, through `.github/actions/setup-cmake`, which checks the
 download against the release's published SHA-256 list.
+It sets that CMake up with the other toolchains, before any build step, so a node build that
+drives cmake itself reads the pinned one; such a repository sets `cmake_configure`, `cmake_build`
+and `cmake_test` empty to skip the cmake steps of its own.
 
 ## Deploying and monitoring a service
 
