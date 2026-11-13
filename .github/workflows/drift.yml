@@ -115,8 +115,11 @@ jobs:
 
       - name: Build the kit against the repository under test
         shell: bash
+        env:
+          ROLE: ${{ inputs.role }}
         run: |
           set -euo pipefail
+          swapped=false
           own_name=""
           if [ -f .weivel/repo.json ]; then
             own_name=$(jq -r '.importName // ""' .weivel/repo.json | tr -d '\r')
@@ -129,9 +132,17 @@ jobs:
               rm -rf "${DRIFT_KIT:?}/$path"
               cp -R "$GITHUB_WORKSPACE" "$DRIFT_KIT/$path"
               echo "The repository under test replaces the kit's pinned $name."
+              swapped=true
             fi
             git -C "$DRIFT_KIT/$path" log -1 --format="The kit builds against $name %H"
           done <<< "$kit_dependencies"
+          case "$ROLE" in
+            core|standard)
+              if [ "$swapped" != true ]; then
+                echo "::error::role '$ROLE' must be checked against the code under test, but its importName '${own_name:-<none>}' is none of the kit's dependencies, so the kit would build against its own pinned copy. Fix: give the repository a .weivel/repo.json whose importName the kit's .weivel/repo.json lists, or point kit_ref at a kit commit that depends on it."
+                exit 1
+              fi ;;
+          esac
 
       - name: Set up the pinned cmake
         uses: intisy/workflows/.github/actions/setup-cmake@main
