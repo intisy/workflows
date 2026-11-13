@@ -1,16 +1,21 @@
 name: Check out a repository's dependencies
 description: >-
   Validates the repository's .weivel/repo.json against the published schema, then clones each of
-  its dependencies, resolved by id, at its pinned commit into its path beside the primary checkout.
+  its dependencies, resolved by id, at its pinned commit into its path beneath root, which is the
+  primary checkout unless given.
 
 inputs:
   token:
     description: Token the id lookups and the clones authenticate with
     required: true
   file:
-    description: The repo file to read
+    description: The repo file to read, relative to root
     required: false
     default: .weivel/repo.json
+  root:
+    description: The directory the dependency paths are checked out beneath
+    required: false
+    default: .
   extra_repositories:
     description: The "owner/name path [ref]" lines the workflow also checks out, so a path claimed by both is refused
     required: false
@@ -29,6 +34,7 @@ runs:
   steps:
     - name: Validate and check out
       shell: bash
+      working-directory: ${{ inputs.root }}
       env:
         TOKEN: ${{ inputs.token }}
         REPO_FILE: ${{ inputs.file }}
