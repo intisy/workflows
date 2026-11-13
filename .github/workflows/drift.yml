@@ -72,8 +72,13 @@ jobs:
               purity|names) ;;
               parity)
                 [ -n "$LANGUAGE" ] || { echo "::error::parity needs the language input."; exit 1; } ;;
-              core-gate|core-sources|benchmark|vectors)
+              core-gate|core-sources|benchmark)
                 [ "$ROLE" = "core" ] || { echo "::error::$check reads the core under test, and this repository's role is '$ROLE', not core."; exit 1; } ;;
+              vectors)
+                case "$ROLE" in
+                  core|standard) ;;
+                  *) echo "::error::vectors runs the corpus of the repository under test, and only core and standard have one; this repository's role is '$ROLE'."; exit 1 ;;
+                esac ;;
               *)
                 echo "::error::'$check' is not a drift check. Fix: use purity, names, parity, core-gate, core-sources, benchmark or vectors."
                 exit 1 ;;
@@ -101,28 +106,32 @@ jobs:
           mv .drift-kit "$RUNNER_TEMP/drift-kit"
           echo "DRIFT_KIT=$RUNNER_TEMP/drift-kit" >> "$GITHUB_ENV"
 
-      - name: Check out the core the kit pins
-        if: ${{ inputs.role != 'core' }}
+      - name: Check out the dependencies the kit pins
         uses: intisy/workflows/.github/actions/checkout-dependencies@main
         with:
           token: ${{ secrets.envPAT || github.token }}
-          file: ${{ runner.temp }}/drift-kit/.weivel/repo.json
+          root: ${{ runner.temp }}/drift-kit
+          file: .weivel/repo.json
 
-      - name: Give the kit the core it builds against
+      - name: Build the kit against the repository under test
         shell: bash
-        env:
-          ROLE: ${{ inputs.role }}
         run: |
           set -euo pipefail
-          mkdir -p "$DRIFT_KIT/siblings"
-          if [ "$ROLE" = "core" ]; then
-            # The core gate and the benchmark must read the core under test, not the one the kit pins.
-            cp -R "$GITHUB_WORKSPACE" "$DRIFT_KIT/siblings/core"
-          else
-            mv siblings/core "$DRIFT_KIT/siblings/core"
-            rmdir siblings
+          own_name=""
+          if [ -f .weivel/repo.json ]; then
+            own_name=$(jq -r '.importName // ""' .weivel/repo.json | tr -d '\r')
           fi
-          git -C "$DRIFT_KIT/siblings/core" log -1 --format='The kit builds against core %H'
+          kit_dependencies=$(jq -r '(.dependencies // [])[]
+            | [.importName, (.path // ("siblings/" + .importName))] | join("|")' "$DRIFT_KIT/.weivel/repo.json" | tr -d '\r')
+          while IFS='|' read -r name path; do
+            [ -n "$name" ] || continue
+            if [ "$name" = "$own_name" ]; then
+              rm -rf "${DRIFT_KIT:?}/$path"
+              cp -R "$GITHUB_WORKSPACE" "$DRIFT_KIT/$path"
+              echo "The repository under test replaces the kit's pinned $name."
+            fi
+            git -C "$DRIFT_KIT/$path" log -1 --format="The kit builds against $name %H"
+          done <<< "$kit_dependencies"
 
       - name: Set up the pinned cmake
         uses: intisy/workflows/.github/actions/setup-cmake@main
@@ -190,4 +199,6 @@ jobs:
       - name: Vectors
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' vectors ') }}
         shell: bash
-        run: '"$DRIFT_PROGRAMS/weivel-conformance" run "$DRIFT_KIT/vectors/core"'
+        env:
+          ROLE: ${{ inputs.role }}
+        run: '"$DRIFT_PROGRAMS/weivel-conformance" run "$DRIFT_KIT/vectors/$ROLE"'
