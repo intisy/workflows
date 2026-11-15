@@ -133,6 +133,48 @@ such as a MinGW-w64 cross compiler, musl or wine, and it keeps those tools in th
 needs them rather than in this one. The command is the repository's own script, so the logic stays
 there; `.examples/cmake/container-test.yml` is the caller.
 
+## Running a conformance kit's drift checks
+
+`drift.yml` checks a repository out, checks a conformance kit out OUTSIDE the workspace, builds the
+kit with a pinned CMake and runs each check named in `checks` against the repository under test, so
+no repository decides how its own checks are run.
+
+```yaml
+jobs:
+  drift:
+    uses: intisy/workflows/.github/workflows/drift.yml@main
+    with:
+      kit_repository: owner/conformance
+      role: core
+      checks: purity names core-gate core-sources benchmark vectors
+      runners: '["ubuntu-latest","windows-latest","macos-latest"]'
+    secrets:
+      envPAT: ${{ secrets.PAT }}
+```
+
+`purity` and `names` read the workspace, `parity` reads it against the `MODULES` list of the core the
+repository under test pins, checked out at its `siblings/core` by the repository's own
+`.weivel/repo.json`, and needs `language`. `core-gate`, `core-sources`, `benchmark` and `vectors` (the kit's
+`vectors/core` corpus, sat by the core under test) read the core itself, so they are refused unless
+`role` is `core`, and for that role the kit is built against the checkout under test rather than its
+pinned core. The kit is built in Release, since a timing verdict from an
+unoptimised build means nothing.
+
+A language implementation, any `role` but `core`, `standard` and `kit`, is checked only by the kit it
+adopted: a run whose `kit_ref` is not the commit its `.weivel/repo.json` pins the kit at fails, naming
+both, before anything is built (`.github/actions/check-kit-pin`). The pin is the dependency whose `id`
+is the kit repository's own, whatever import name the repository gives it. So its drift caller's `kit_ref` and
+that pin move in one change. `core` and `standard` cannot pin the kit, which pins them, so their
+caller's `kit_ref` is their only pin.
+
+The CMake is pinned (`cmake_version`) because the kit's platform-specific tests skip by exit code,
+which needs CMake 3.29 or later; below that they fail instead. `test.yml` takes the same
+`cmake_version` input, empty by default, through `.github/actions/setup-cmake`, which checks the
+download against the release's published SHA-256 list.
+It sets that CMake up with the other toolchains, before any build step, so a node build that
+drives cmake itself reads the pinned one; such a repository sets `cmake_configure`, `cmake_build`
+and `cmake_test` empty to skip the cmake steps of its own.
+
 ## Deploying and monitoring a service
 
 `deploy-cloudflare.yml` publishes a Cloudflare Worker. `checks` is a newline separated list of
