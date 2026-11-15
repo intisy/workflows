@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       kit_ref:
-        description: 'Ref of the kit to run; empty takes its default branch'
+        description: 'Ref of the kit to run; empty takes its default branch. A language implementation must pass the commit its .weivel/repo.json pins the kit at'
         required: false
         type: string
         default: ''
@@ -111,6 +111,24 @@ jobs:
           mv .drift-kit "$RUNNER_TEMP/drift-kit"
           echo "DRIFT_KIT=$RUNNER_TEMP/drift-kit" >> "$GITHUB_ENV"
 
+      # core and standard cannot pin the kit, which pins them, and the kit never runs another commit of itself.
+      - name: Refuse a kit other than the one the repository pins
+        if: ${{ inputs.role != 'core' && inputs.role != 'standard' && inputs.role != 'kit' }}
+        uses: intisy/workflows/.github/actions/check-kit-pin@main
+        with:
+          kit_ref: ${{ inputs.kit_ref }}
+          kit_repository: ${{ inputs.kit_repository }}
+          token: ${{ secrets.envPAT || github.token }}
+          repository_file: .weivel/repo.json
+
+      - name: Check out the dependencies the repository under test pins
+        if: ${{ contains(steps.checks.outputs.padded, ' parity ') }}
+        uses: intisy/workflows/.github/actions/checkout-dependencies@main
+        with:
+          token: ${{ secrets.envPAT || github.token }}
+          root: ${{ github.workspace }}
+          file: .weivel/repo.json
+
       - name: Check out the dependencies the kit pins
         uses: intisy/workflows/.github/actions/checkout-dependencies@main
         with:
@@ -184,7 +202,7 @@ jobs:
         shell: bash
         env:
           LANGUAGE: ${{ inputs.language }}
-        run: '"$DRIFT_PROGRAMS/weivel-parity" "$GITHUB_WORKSPACE" "$DRIFT_KIT/siblings/core/MODULES" "$LANGUAGE" "$DRIFT_KIT/checks/languages.txt"'
+        run: '"$DRIFT_PROGRAMS/weivel-parity" "$GITHUB_WORKSPACE" "$LANGUAGE" "$DRIFT_KIT/checks/languages.txt"'
 
       - name: Layers
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(steps.checks.outputs.padded, ' layers ') }}

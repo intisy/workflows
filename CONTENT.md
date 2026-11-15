@@ -149,11 +149,19 @@ jobs:
 ```
 
 `purity` and `names` read the workspace, `parity` reads it against the `MODULES` list of the core the
-kit pins and needs `language`. `core-gate`, `core-sources`, `benchmark` and `vectors` (the kit's
+repository under test pins, checked out at its `siblings/core` by the repository's own
+`.weivel/repo.json`, and needs `language`. `core-gate`, `core-sources`, `benchmark` and `vectors` (the kit's
 `vectors/core` corpus, sat by the core under test) read the core itself, so they are refused unless
 `role` is `core`, and for that role the kit is built against the checkout under test rather than its
 pinned core. The kit is built in Release, since a timing verdict from an
 unoptimised build means nothing.
+
+A language implementation, any `role` but `core`, `standard` and `kit`, is checked only by the kit it
+adopted: a run whose `kit_ref` is not the commit its `.weivel/repo.json` pins the kit at fails, naming
+both, before anything is built (`.github/actions/check-kit-pin`). The pin is the dependency whose `id`
+is the kit repository's own, whatever import name the repository gives it. So its drift caller's `kit_ref` and
+that pin move in one change. `core` and `standard` cannot pin the kit, which pins them, so their
+caller's `kit_ref` is their only pin.
 
 The CMake is pinned (`cmake_version`) because the kit's platform-specific tests skip by exit code,
 which needs CMake 3.29 or later; below that they fail instead. `test.yml` takes the same

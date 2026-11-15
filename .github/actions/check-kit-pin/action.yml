@@ -1,0 +1,41 @@
+name: Check the kit pin
+description: >-
+  Fails when the conformance kit a drift run checks out is not the commit the repository under test
+  pins in its repo file, naming both, so a repository is never judged by a kit it has not adopted.
+  The pin is found by the kit repository's id, never by an import name.
+
+inputs:
+  kit_ref:
+    description: The kit_ref the drift run was given
+    required: true
+  kit_repository:
+    description: The kit, as owner/name, whose numeric id names its pin
+    required: true
+  token:
+    description: Token the id lookup authenticates with
+    required: true
+  repository_file:
+    description: The repository under test's repo file
+    required: false
+    default: .weivel/repo.json
+
+runs:
+  using: composite
+  steps:
+    # Pinned, not an input: Node runs the TypeScript directly and only 24 and above can.
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Compare the kit_ref with the pin
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        KIT_REF: ${{ inputs.kit_ref }}
+        KIT_REPOSITORY: ${{ inputs.kit_repository }}
+        REPOSITORY_FILE: ${{ inputs.repository_file }}
+      run: |
+        set -euo pipefail
+        number=$(gh api "repos/${KIT_REPOSITORY}" --jq '.id')
+        KIT_ID="github:${number}" node "${{ github.action_path }}/check.ts"
