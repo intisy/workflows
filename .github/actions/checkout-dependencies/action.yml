@@ -1,6 +1,6 @@
 name: Check out a repository's dependencies
 description: >-
-  Validates the repository's .weivel/repo.json against the published schema, then clones each of
+  Validates the repository's repo.json against the schema beside this action, then clones each of
   its dependencies, resolved by id, at its pinned commit into its path beneath root, which is the
   primary checkout unless given.
 
@@ -11,7 +11,7 @@ inputs:
   file:
     description: The repo file to read, relative to root
     required: false
-    default: .weivel/repo.json
+    default: repo.json
   root:
     description: The directory the dependency paths are checked out beneath
     required: false
@@ -24,10 +24,6 @@ inputs:
     description: The path of the single extra repository the workflow also checks out
     required: false
     default: ''
-  schema:
-    description: Address of the repo file schema
-    required: false
-    default: https://weivel.github.io/model/repo.schema.json
 
 runs:
   using: composite
@@ -40,7 +36,7 @@ runs:
         REPO_FILE: ${{ inputs.file }}
         EXTRA_REPOSITORIES: ${{ inputs.extra_repositories }}
         EXTRA_PATH: ${{ inputs.extra_path }}
-        SCHEMA: ${{ inputs.schema }}
+        SCHEMA: ${{ github.action_path }}/repo.schema.json
       run: |
         set -uo pipefail
         refusal_file="${RUNNER_TEMP}/checkout-dependencies.refusal"
@@ -74,10 +70,8 @@ runs:
           fi
         done <<< "$dependency_rows"
 
-        schema_file="${RUNNER_TEMP}/repo.schema.json"
-        curl -sSfL "$SCHEMA" -o "$schema_file" || refuse schema-unreachable "could not fetch the schema from $SCHEMA. Fix: retry, or pass another address as 'schema'."
-        schema_report=$(env -u TOKEN npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$schema_file" -d "$REPO_FILE" 2>&1) \
-          || { echo "$schema_report"; refuse schema "$REPO_FILE does not match $SCHEMA. Fix: correct what the report above names."; }
+        schema_report=$(env -u TOKEN npx --yes ajv-cli@5.0.0 validate --spec=draft7 --strict=false -s "$SCHEMA" -d "$REPO_FILE" 2>&1) \
+          || { echo "$schema_report"; refuse schema "$REPO_FILE does not match the repo file schema. Fix: correct what the report above names."; }
 
         authorization=$(printf 'x-access-token:%s' "$TOKEN" | base64 | tr -d '\n')
         echo "::add-mask::$authorization"
