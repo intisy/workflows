@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       kit_ref:
-        description: 'Ref of the kit to run; empty takes its default branch. A language implementation must pass the commit its .weivel/repo.json pins the kit at'
+        description: 'Ref of the kit to run; empty takes its default branch. A language implementation must pass the commit its repo.json pins the kit at'
         required: false
         type: string
         default: ''
@@ -119,7 +119,7 @@ jobs:
           kit_ref: ${{ inputs.kit_ref }}
           kit_repository: ${{ inputs.kit_repository }}
           token: ${{ secrets.envPAT || github.token }}
-          repository_file: .weivel/repo.json
+          repository_file: repo.json
 
       - name: Check out the dependencies the repository under test pins
         if: ${{ contains(steps.checks.outputs.padded, ' parity ') }}
@@ -127,7 +127,7 @@ jobs:
         with:
           token: ${{ secrets.envPAT || github.token }}
           root: ${{ github.workspace }}
-          file: .weivel/repo.json
+          file: repo.json
 
       - name: Check out the dependencies the kit pins
         uses: intisy/workflows/.github/actions/checkout-dependencies@main
