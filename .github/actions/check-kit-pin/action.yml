@@ -17,7 +17,7 @@ inputs:
   repository_file:
     description: The repository under test's repo file
     required: false
-    default: .weivel/repo.json
+    default: repo.json
 
 runs:
   using: composite

@@ -1,7 +1,7 @@
 /**
  * Refuses a drift run whose kit is not the one the repository under test pins.
  *
- * A repository adopts a kit commit by pinning it in its `.weivel/repo.json`, and that pin is what
+ * A repository adopts a kit commit by pinning it in its `repo.json`, and that pin is what
  * its own build and tests read. A drift run handed any other `kit_ref` judges the repository by
  * rules it never adopted, or lets it pass by rules it has since outgrown, so the two must agree.
  * The pin is found by the dependency's `id`, the kit repository's stable identity, because an
@@ -36,17 +36,17 @@ export function kitPinRefusal(kitRef: string, kitId: string, repository: unknown
   }
   const pins = dependenciesOf(repository).filter((entry) => entry.id === kitId);
   if (pins.length === 0) {
-    return `${describeRef(kitRef)}, but .weivel/repo.json pins no ${kitId}. Fix: pin the kit commit this repository adopts there, under the kit's id, and pass that commit as kit_ref.`;
+    return `${describeRef(kitRef)}, but repo.json pins no ${kitId}. Fix: pin the kit commit this repository adopts there, under the kit's id, and pass that commit as kit_ref.`;
   }
   if (pins.length > 1) {
-    return `${describeRef(kitRef)}, but .weivel/repo.json pins ${kitId} ${pins.length} times. Fix: keep one pin.`;
+    return `${describeRef(kitRef)}, but repo.json pins ${kitId} ${pins.length} times. Fix: keep one pin.`;
   }
   const pin = pins[0];
   if (typeof pin.commit !== "string" || pin.commit === "") {
-    return `${describeRef(kitRef)}, but .weivel/repo.json pins ${describePin(kitId, pin)} at no commit. Fix: give the pin its commit.`;
+    return `${describeRef(kitRef)}, but repo.json pins ${describePin(kitId, pin)} at no commit. Fix: give the pin its commit.`;
   }
   if (pin.commit !== kitRef) {
-    return `${describeRef(kitRef)}, but .weivel/repo.json pins ${describePin(kitId, pin)} at ${pin.commit}. Fix: move both to the same commit, kit_ref in the drift caller and the pin, in one change.`;
+    return `${describeRef(kitRef)}, but repo.json pins ${describePin(kitId, pin)} at ${pin.commit}. Fix: move both to the same commit, kit_ref in the drift caller and the pin, in one change.`;
   }
   return undefined;
 }
