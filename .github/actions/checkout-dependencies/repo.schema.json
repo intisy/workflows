@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/intisy/workflows/main/.github/actions/checkout-dependencies/repo.schema.json",
+  "title": "repo file",
+  "description": "What a repository says about itself, kept at repo.json in its root: its import name, description, topics, where it sits in a checkout and which repositories it depends on, each by id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "importName"
+  ],
+  "properties": {
+    "$schema": {
+      "description": "Pointer at the published schema, for an editor's completion and validation.",
+      "type": "string"
+    },
+    "format": {
+      "description": "The version of this document's shape.",
+      "const": 1,
+      "fix": "set \"format\" to 1"
+    },
+    "importName": {
+      "description": "The name this repository is imported by, which is also the folder it sits in beside its dependents.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+([-.][a-z0-9]+)*(?![\\s\\S])",
+      "fix": "use lowercase words joined by single hyphens or dots, for example \"config-ledger\" or \"api.http\""
+    },
+    "description": {
+      "description": "A short line saying what the repository is, for the host to show.",
+      "type": "string",
+      "fix": "write one short sentence"
+    },
+    "topics": {
+      "description": "Topics the repository is filed under on its host.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "description": "One topic.",
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,49}(?![\\s\\S])",
+        "fix": "use lowercase letters, digits and hyphens, at most 50 characters, for example \"json-schema\""
+      },
+      "fix": "list at most 20 topics"
+    },
+    "homepage": {
+      "description": "The address of the repository's home page.",
+      "type": "string",
+      "fix": "write a full address, for example \"https://example.org\""
+    },
+    "settings": {
+      "description": "Settings the host should carry for this repository. A setting left out leaves the host alone.",
+      "type": "object",
+      "additionalProperties": false,
+      "fix": "keep to visibility, defaultBranch, issues and wiki",
+      "properties": {
+        "visibility": {
+          "description": "Who can see the repository.",
+          "enum": [
+            "public",
+            "private"
+          ],
+          "fix": "write \"public\" or \"private\""
+        },
+        "defaultBranch": {
+          "description": "The branch the host opens by default.",
+          "type": "string",
+          "minLength": 1,
+          "fix": "write a branch name"
+        },
+        "issues": {
+          "description": "Whether the host's issue tracker is on.",
+          "type": "boolean",
+          "fix": "write true or false"
+        },
+        "wiki": {
+          "description": "Whether the host's wiki is on.",
+          "type": "boolean",
+          "fix": "write true or false"
+        }
+      }
+    },
+    "place": {
+      "description": "Where this repository sits, as a path relative to its own org folder, for a repository that holds a family of others. Segments are import names joined by /, with no leading slash and no . or .. segment, so it can never leave the org folder.",
+      "type": "string",
+      "pattern": "^[a-z0-9]+([-.][a-z0-9]+)*(/[a-z0-9]+([-.][a-z0-9]+)*)*(?![\\s\\S])",
+      "fix": "write a relative path of lowercase segments, for example \"docs\" or \"shared/library\""
+    },
+    "hosts": {
+      "description": "The owners this repository may be published under, each as a resolver and an account.",
+      "type": "array",
+      "items": {
+        "description": "One owner.",
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(@[a-z0-9.-]+)?:[A-Za-z0-9][A-Za-z0-9-]*(?![\\s\\S])",
+        "fix": "write the owner as a resolver and an account, for example \"github:forebay\""
+      },
+      "fix": "list owners such as \"github:spisor\""
+    },
+    "projects": {
+      "description": "The projects this repository's folder holds, each with a one line description, keyed by the project's folder name.",
+      "type": "object",
+      "fix": "write each project as a name and a one line description",
+      "additionalProperties": {
+        "description": "What the project is, on one line.",
+        "type": "string",
+        "pattern": "^[^\\r\\n]*(?![\\s\\S])",
+        "fix": "write one line with no line break"
+      }
+    },
+    "claims": {
+      "description": "The owners whose folder this repository describes, each as a resolver and an account.",
+      "type": "array",
+      "items": {
+        "description": "One claimed owner.",
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(@[a-z0-9.-]+)?:[A-Za-z0-9][A-Za-z0-9-]*(?![\\s\\S])",
+        "fix": "write the owner as a resolver and an account, for example \"github:forebay\""
+      },
+      "fix": "list owners such as \"github:forebay\""
+    },
+    "dependencies": {
+      "description": "The repositories this one builds against, each by id and pinned to a commit.",
+      "type": "array",
+      "fix": "list each dependency with its id, importName and commit",
+      "items": {
+        "description": "One dependency.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "importName",
+          "commit"
+        ],
+        "fix": "give id, importName and commit, and a path only when it differs from the default",
+        "properties": {
+          "id": {
+            "description": "The repository identity of the dependency, which survives a rename.",
+            "type": "string",
+            "pattern": "^(local:[^/\\s]+|[a-z][a-z0-9-]*(@[a-z0-9.-]+)?:[0-9]+)(/[a-z0-9._-]+)*(?![\\s\\S])",
+            "fix": "write the id as a repository id, for example \"github:123\" or \"gitea@git.example.com:12/runtime\""
+          },
+          "importName": {
+            "description": "The name the dependency is imported by.",
+            "type": "string",
+            "pattern": "^[a-z0-9]+([-.][a-z0-9]+)*(?![\\s\\S])",
+            "fix": "use lowercase words joined by single hyphens or dots"
+          },
+          "commit": {
+            "description": "The commit of the dependency this repository builds against.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}(?![\\s\\S])",
+            "fix": "write the full 40 character lowercase commit hash"
+          },
+          "path": {
+            "description": "Where the dependency is checked out, relative to this repository. Defaults to siblings/<importName>. It starts with siblings/, contains no .., and its last segment must equal importName, which JSON Schema cannot compare, so a checkout enforces it.",
+            "type": "string",
+            "pattern": "^siblings(/(?!\\.{1,2}(/|(?![\\s\\S])))[a-z0-9._-]+)+(?![\\s\\S])",
+            "fix": "write a path beneath siblings/ that ends in the dependency's importName, for example \"siblings/kernel\""
+          }
+        }
+      }
+    }
+  }
+}

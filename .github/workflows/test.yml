@@ -262,7 +262,7 @@ jobs:
           echo "BROKER_TOKEN=$token" >> "$GITHUB_ENV"
 
       - name: Check out the dependencies the repo file names
-        if: ${{ hashFiles('.weivel/repo.json') != '' }}
+        if: ${{ hashFiles('repo.json') != '' }}
         uses: intisy/workflows/.github/actions/checkout-dependencies@main
         with:
           token: ${{ env.BROKER_TOKEN || secrets.envPAT || github.token }}
