@@ -219,6 +219,7 @@ jobs:
           exempt: ${{ inputs.line_endings_exempt }}
 
       - name: Exchange an OIDC token for the build credential
+        id: broker
         if: ${{ inputs.token_broker != '' }}
         shell: bash
         env:
@@ -257,15 +258,15 @@ jobs:
             echo "::error::the token broker answered 200 with no token."
             exit 1
           fi
-          # Masked before it reaches the environment, so no later step can print it.
+          # A step output, not $GITHUB_ENV: only the steps that name it receive it. Masked first, so none can print it.
           echo "::add-mask::$token"
-          echo "BROKER_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
 
       - name: Check out the dependencies the repo file names
         if: ${{ hashFiles('repo.json') != '' }}
         uses: intisy/workflows/.github/actions/checkout-dependencies@main
         with:
-          token: ${{ env.BROKER_TOKEN || secrets.envPAT || github.token }}
+          token: ${{ steps.broker.outputs.token || secrets.envPAT || github.token }}
           extra_repositories: ${{ inputs.extra_repositories }}
           extra_path: ${{ inputs.extra_path }}
 
@@ -376,8 +377,8 @@ jobs:
         run: ${{ inputs.node_install }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Build with node
         if: ${{ steps.detect.outputs.node != '' && inputs.node_build != '' }}
@@ -385,8 +386,8 @@ jobs:
         run: ${{ inputs.node_build }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Test with node
         if: ${{ steps.detect.outputs.node != '' }}
@@ -400,8 +401,8 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_pretest }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Test with gradle
         if: ${{ steps.detect.outputs.gradle != '' && inputs.gradle_test != '' }}
@@ -410,8 +411,8 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_test }} ${{ inputs.gradle_args }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Test with maven
         if: ${{ steps.detect.outputs.maven != '' && inputs.maven_test != '' }}
@@ -419,8 +420,8 @@ jobs:
         run: mvn --batch-mode ${{ inputs.maven_test }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Test with python
         if: ${{ steps.detect.outputs.python != '' }}
@@ -453,5 +454,5 @@ jobs:
         run: ${{ inputs.post_test }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}

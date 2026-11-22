@@ -250,6 +250,7 @@ jobs:
           fi
 
       - name: Exchange an OIDC token for the build credential
+        id: broker
         if: ${{ inputs.token_broker != '' }}
         shell: bash
         env:
@@ -289,9 +290,9 @@ jobs:
             echo "::error::the token broker answered 200 with no token."
             exit 1
           fi
-          # Masked before it reaches the environment, so no later step can print it.
+          # A step output, not $GITHUB_ENV: only the steps that name it receive it. Masked first, so none can print it.
           echo "::add-mask::$token"
-          echo "BROKER_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
 
       - name: Detect toolchains and targets
         id: detect
@@ -374,16 +375,16 @@ jobs:
         run: ${{ inputs.node_install }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Build with node
         if: ${{ steps.detect.outputs.node != '' && inputs.node_build != '' }}
         run: ${{ inputs.node_build }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Build with gradle
         if: ${{ steps.detect.outputs.gradle != '' && inputs.publish_task == '' && steps.detect.outputs.node == '' }}
@@ -391,16 +392,16 @@ jobs:
         run: ./gradlew ${{ inputs.gradle_build }} ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Build with maven
         if: ${{ steps.detect.outputs.maven != '' }}
         run: mvn --batch-mode ${{ inputs.maven_build }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Configure with cmake
         if: ${{ steps.detect.outputs.cmake != '' }}
@@ -421,8 +422,8 @@ jobs:
         run: ${{ inputs.post_build }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Check the README is up to date
         if: ${{ inputs.require_clean_readme }}
@@ -517,8 +518,8 @@ jobs:
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew :${{ inputs.jar_pretest_task }} ${{ inputs.gradle_args }}
         env:
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Guard against a github-gradle target with no modules
         if: ${{ steps.detect.outputs.github-gradle != '' && inputs.jar_module == '' && inputs.publish_task == '' }}
@@ -533,8 +534,8 @@ jobs:
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         env:
           JAR_MODULES: ${{ inputs.jar_module }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
         run: |
           TASKS=""
           for module in $JAR_MODULES; do
@@ -547,8 +548,8 @@ jobs:
         working-directory: ${{ steps.detect.outputs.gradle_root || '.' }}
         run: ./gradlew ${{ inputs.publish_task }} ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
         env:
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
-          GH_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
+          GH_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Publish to a maven repository
         if: ${{ steps.detect.outputs.maven-target != '' && steps.detect.outputs.gradle != '' }}
@@ -556,13 +557,13 @@ jobs:
         run: ./gradlew publish ${{ inputs.gradle_args }} -Partifact_version=${{ steps.tag.outputs.name }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
 
       - name: Deploy to a maven repository
         if: ${{ steps.detect.outputs.maven-target != '' && steps.detect.outputs.gradle == '' && steps.detect.outputs.maven != '' }}
         env:
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.envPAT || env.BROKER_TOKEN || github.token }}
+          GITHUB_TOKEN: ${{ secrets.envPAT || steps.broker.outputs.token || github.token }}
         run: |
           mvn --batch-mode versions:set -DnewVersion=${{ steps.tag.outputs.name }} -DgenerateBackupPoms=false
           mvn --batch-mode deploy -DskipTests
