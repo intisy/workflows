@@ -123,3 +123,72 @@ jobs:
           reported=$(cmake --version | head -n 1)
           [ "$reported" = "cmake version 4.4.4" ] || { echo "::error::cmake on the PATH reports '$reported'"; exit 1; }
           ctest --version | head -n 1
+
+  setup-rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain the fixture pins
+        uses: ./.github/actions/setup-rust
+        with:
+          root: .github/self-test/rust-toolchain
+      - name: Expect the pinned toolchain in the fixture
+        shell: bash
+        working-directory: .github/self-test/rust-toolchain
+        run: |
+          reported=$(rustc --version)
+          case "$reported" in
+            "rustc 1.100.0 "*) echo "$reported" ;;
+            *) echo "::error::rustc in the fixture reports '$reported'"; exit 1 ;;
+          esac
+          cargo --version
+
+  # The hosted images ship rustup, so a bare container is what exercises the install path.
+  setup-rust-without-rustup:
+    runs-on: ubuntu-latest
+    container: ubuntu:24.04
+    steps:
+      - name: Install what the action needs and no rustup
+        shell: bash
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git
+          if command -v rustup > /dev/null; then echo "::error::the container already has rustup"; exit 1; fi
+      - uses: actions/checkout@v4
+      - name: Install rustup and the toolchain the fixture pins
+        uses: ./.github/actions/setup-rust
+        with:
+          root: .github/self-test/rust-toolchain
+      - name: Expect the pinned rustup and toolchain
+        shell: bash
+        working-directory: .github/self-test/rust-toolchain
+        run: |
+          case "$(rustup --version 2> /dev/null)" in
+            "rustup 1.29.3 "*) ;;
+            *) echo "::error::rustup reports '$(rustup --version 2> /dev/null)'"; exit 1 ;;
+          esac
+          case "$(rustc --version)" in
+            "rustc 1.100.0 "*) rustc --version ;;
+            *) echo "::error::rustc in the fixture reports '$(rustc --version)'"; exit 1 ;;
+          esac
+
+  setup-rust-refuses-a-tree-without-its-pin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up rust where no rust-toolchain.toml lies
+        id: setup
+        continue-on-error: true
+        uses: ./.github/actions/setup-rust
+        with:
+          root: .github/self-test/valid
+      - name: Expect the refusal
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.setup.outcome }}
+        run: |
+          [ "$OUTCOME" = failure ] || { echo "::error::expected setup-rust to refuse a tree with no pin, it ended $OUTCOME"; exit 1; }

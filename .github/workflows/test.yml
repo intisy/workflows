@@ -116,6 +116,21 @@ on:
         required: false
         type: string
         default: 'ctest --test-dir build --output-on-failure'
+      cargo_pretest:
+        description: 'Cargo command run before the tests, without the leading cargo, for example run -p native to build the native siblings; empty skips it'
+        required: false
+        type: string
+        default: ''
+      cargo_test:
+        description: 'Cargo command the test step runs, without the leading cargo; empty skips it while still setting up the toolchain'
+        required: false
+        type: string
+        default: 'test'
+      cargo_args:
+        description: 'Appended to every cargo invocation, for example --locked; it lands after the command, so a pretest that passes its program arguments after -- receives these too'
+        required: false
+        type: string
+        default: ''
       make_test:
         required: false
         type: string
@@ -352,6 +367,11 @@ jobs:
         with:
           version: ${{ inputs.cmake_version }}
 
+      # The repository's rust-toolchain.toml names the toolchain, so the workflow pins none of its own.
+      - name: Set up the pinned rust toolchain
+        if: ${{ steps.detect.outputs.cargo != '' }}
+        uses: intisy/workflows/.github/actions/setup-rust@main
+
       # Before the wrapper is made executable or invoked, since validating one after running it
       # proves nothing. Quiet when the repository has no wrapper jar at all.
       - name: Validate the gradle wrapper
@@ -442,6 +462,16 @@ jobs:
         if: ${{ steps.detect.outputs.cmake != '' && inputs.cmake_test != '' }}
         shell: bash
         run: ${{ inputs.cmake_test }}
+
+      - name: Run the cargo pretest command
+        if: ${{ steps.detect.outputs.cargo != '' && inputs.cargo_pretest != '' }}
+        shell: bash
+        run: cargo ${{ inputs.cargo_pretest }} ${{ inputs.cargo_args }}
+
+      - name: Test with cargo
+        if: ${{ steps.detect.outputs.cargo != '' && inputs.cargo_test != '' }}
+        shell: bash
+        run: cargo ${{ inputs.cargo_test }} ${{ inputs.cargo_args }}
 
       - name: Test with make
         if: ${{ steps.detect.outputs.make != '' }}

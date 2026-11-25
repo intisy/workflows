@@ -2,21 +2,23 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type Toolchain = "node" | "gradle" | "maven" | "python" | "cmake" | "make";
+export type Toolchain = "node" | "gradle" | "maven" | "python" | "cmake" | "cargo" | "make";
 export type Target = "npm" | "github-gradle" | "maven" | "plugin-portal";
 
-// Node runs first because a polyglot repo's npm build is what drives its gradle and TeaVM steps.
-export const TOOLCHAIN_ORDER: readonly Toolchain[] = ["node", "gradle", "maven", "python", "cmake", "make"];
+// Node runs first because a polyglot repo's npm build is what drives its gradle and TeaVM steps, and cargo after
+// cmake because a crate that loads native siblings needs them built first.
+export const TOOLCHAIN_ORDER: readonly Toolchain[] = ["node", "gradle", "maven", "python", "cmake", "cargo", "make"];
 export const TARGET_ORDER: readonly Target[] = ["npm", "github-gradle", "maven", "plugin-portal"];
 
 const GRADLE_ROOTS = [".", "java"] as const;
 const GRADLE_MARKERS = ["settings.gradle", "settings.gradle.kts", "build.gradle", "build.gradle.kts"] as const;
 
-const MARKERS: Record<"node" | "maven" | "python" | "cmake", readonly string[]> = {
+const MARKERS: Record<"node" | "maven" | "python" | "cmake" | "cargo", readonly string[]> = {
   node: ["package.json"],
   maven: ["pom.xml"],
   python: ["pyproject.toml", "setup.py", "requirements.txt"],
   cmake: ["CMakeLists.txt"],
+  cargo: ["Cargo.toml"],
 };
 
 function has(rootDir: string, markers: readonly string[]): boolean {
@@ -39,6 +41,7 @@ export function detectToolchains(rootDir: string): Toolchain[] {
   if (!gradle && has(rootDir, MARKERS.maven)) found.add("maven");
   if (has(rootDir, MARKERS.python)) found.add("python");
   if (has(rootDir, MARKERS.cmake)) found.add("cmake");
+  if (has(rootDir, MARKERS.cargo)) found.add("cargo");
   // A Makefile beside a real build system is a helper, so make is the fallback rather than a peer.
   if (found.size === 0 && existsSync(join(rootDir, "Makefile"))) found.add("make");
   return TOOLCHAIN_ORDER.filter((tool) => found.has(tool));
