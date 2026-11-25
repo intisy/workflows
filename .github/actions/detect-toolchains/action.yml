@@ -40,6 +40,9 @@ outputs:
   cmake:
     description: Non-empty when the repository has a cmake toolchain
     value: ${{ steps.detect.outputs.cmake }}
+  cargo:
+    description: Non-empty when the repository has a cargo toolchain
+    value: ${{ steps.detect.outputs.cargo }}
   make:
     description: Non-empty when the repository builds with make alone
     value: ${{ steps.detect.outputs.make }}

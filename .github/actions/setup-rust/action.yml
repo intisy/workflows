@@ -1,0 +1,88 @@
+name: Set up the pinned rust toolchain
+description: >-
+  Installs the toolchain a repository's rust-toolchain.toml names, through rustup. A runner without
+  rustup gets the pinned rustup release from static.rust-lang.org, checked against its published
+  SHA-256, so the toolchain is the repository's pin on every runner whatever the image ships.
+
+inputs:
+  root:
+    description: Directory holding the rust-toolchain.toml that names the toolchain
+    required: false
+    default: '.'
+  rustup_version:
+    description: The rustup release installed when the runner has none, as x.y.z
+    required: false
+    default: '1.29.3'
+
+runs:
+  using: composite
+  steps:
+    - name: Install rustup when the runner lacks it
+      shell: bash
+      env:
+        VERSION: ${{ inputs.rustup_version }}
+      run: |
+        set -euo pipefail
+        if command -v rustup > /dev/null; then
+          echo "$(rustup --version 2> /dev/null), from the runner"
+          exit 0
+        fi
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) target=x86_64-unknown-linux-gnu; installer=rustup-init ;;
+          Linux-ARM64) target=aarch64-unknown-linux-gnu; installer=rustup-init ;;
+          macOS-X64) target=x86_64-apple-darwin; installer=rustup-init ;;
+          macOS-ARM64) target=aarch64-apple-darwin; installer=rustup-init ;;
+          Windows-X64) target=x86_64-pc-windows-msvc; installer=rustup-init.exe ;;
+          Windows-ARM64) target=aarch64-pc-windows-msvc; installer=rustup-init.exe ;;
+          *) echo "::error::no rustup build is known for $RUNNER_OS on $RUNNER_ARCH."; exit 1 ;;
+        esac
+
+        destination="$RUNNER_TEMP/rustup-$VERSION"
+        mkdir -p "$destination"
+        cd "$destination"
+        release="https://static.rust-lang.org/rustup/archive/$VERSION/$target"
+        curl -sSfL --retry 3 -o "$installer" "$release/$installer"
+        curl -sSfL --retry 3 -o "$installer.sha256" "$release/$installer.sha256"
+
+        expected=$(awk '{ print $1 }' "$installer.sha256")
+        if command -v sha256sum > /dev/null; then
+          actual=$(sha256sum "$installer" | awk '{ print $1 }')
+        else
+          actual=$(shasum -a 256 "$installer" | awk '{ print $1 }')
+        fi
+        if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+          echo "::error::$installer $VERSION hashes to $actual, and the release lists '$expected'."
+          exit 1
+        fi
+
+        chmod +x "$installer"
+        "./$installer" -y --no-modify-path --profile minimal --default-toolchain none
+        cargo_home="${CARGO_HOME:-$HOME/.cargo}"
+        path_entry="$cargo_home/bin"
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          path_entry=$(cygpath -w "$path_entry")
+        fi
+        echo "$path_entry" >> "$GITHUB_PATH"
+        "$cargo_home/bin/rustup" set auto-self-update disable
+        "$cargo_home/bin/rustup" --version
+
+    # A toolchain the file does not decide is one the runner image decides, which is what the pin exists to prevent.
+    - name: Install the toolchain rust-toolchain.toml names
+      shell: bash
+      working-directory: ${{ inputs.root }}
+      env:
+        ROOT: ${{ inputs.root }}
+      run: |
+        set -euo pipefail
+        if [ ! -f rust-toolchain.toml ]; then
+          echo "::error::no rust-toolchain.toml in $ROOT, so the runner image would choose the toolchain. Fix: commit one naming an exact release."
+          exit 1
+        fi
+        rustup="rustup"
+        command -v rustup > /dev/null || rustup="${CARGO_HOME:-$HOME/.cargo}/bin/rustup"
+        "$rustup" toolchain install
+        active=$("$rustup" show active-toolchain)
+        case "$active" in
+          *rust-toolchain.toml*) echo "$active" ;;
+          *) echo "::error::the active toolchain is '$active', not the one rust-toolchain.toml names."; exit 1 ;;
+        esac

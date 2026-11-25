@@ -33,6 +33,22 @@ describe("detectToolchains", () => {
     expect(detectToolchains(repo({ "CMakeLists.txt": "" }))).toEqual(["cmake"]);
   });
 
+  it("detects cargo from a root Cargo.toml", () => {
+    expect(detectToolchains(repo({ "Cargo.toml": "" }))).toEqual(["cargo"]);
+  });
+
+  it("orders cargo after cmake, so the native siblings a crate loads are built first", () => {
+    expect(detectToolchains(repo({ "Cargo.toml": "", "CMakeLists.txt": "" }))).toEqual(["cmake", "cargo"]);
+  });
+
+  it("reads no Cargo.toml below the root", () => {
+    expect(detectToolchains(repo({ "scripts/native/Cargo.toml": "" }))).toEqual([]);
+  });
+
+  it("does not fall back to make beside a Cargo.toml", () => {
+    expect(detectToolchains(repo({ "Cargo.toml": "", Makefile: "" }))).toEqual(["cargo"]);
+  });
+
   it("detects python from any of its three markers", () => {
     for (const marker of ["pyproject.toml", "setup.py", "requirements.txt"]) {
       expect(detectToolchains(repo({ [marker]: "" }))).toEqual(["python"]);
@@ -181,8 +197,20 @@ describe("outputLines", () => {
     expect(lines).toContain("npm=");
   });
 
+  // The toolchain is named for its build tool, as gradle and maven are, so the language's name is no toolchain.
   it("rejects an unknown toolchain in an override", () => {
-    expect(() => outputLines(repo({}), "rust", "")).toThrow(/rust/);
+    expect(() => outputLines(repo({}), "rust", "")).toThrow(/unknown toolchain "rust"; known are .*cmake, cargo, make/);
+  });
+
+  it("honours cargo in an override and reports it", () => {
+    const lines = outputLines(repo({}), "cmake cargo", "");
+    expect(lines).toContain("toolchains=cmake cargo");
+    expect(lines).toContain("cargo=true");
+    expect(lines).toContain("cmake=true");
+  });
+
+  it("emits an empty cargo key when cargo is absent", () => {
+    expect(outputLines(repo({ "package.json": "{}" }), "", "")).toContain("cargo=");
   });
 
   it("reports the gradle root when gradle is present", () => {
