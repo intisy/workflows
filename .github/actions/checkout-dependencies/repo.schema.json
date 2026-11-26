@@ -52,6 +52,7 @@
       "description": "Topics the repository is filed under on its host.",
       "type": "array",
       "maxItems": 20,
+      "uniqueItems": true,
       "items": {
         "type": "string",
         "pattern": "^[a-z0-9][a-z0-9-]{0,49}(?![\\s\\S])"
